@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#2f6b55"/><stop offset="1" stop-color="#1f4d3f"/></radialGradient>
+    <linearGradient id="shell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#efe2c8"/></linearGradient>
+    <radialGradient id="yolk" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#ffc53d"/><stop offset="1" stop-color="#e89400"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256 262) scale(0.88) translate(-256 -262)">
+    <ellipse cx="256" cy="430" rx="120" ry="18" fill="#000" opacity=".18"/>
+    <path d="M256 70C178 70 112 196 112 286a144 144 0 0 0 288 0C400 196 334 70 256 70Z" fill="url(#shell)"/>
+    <path d="M190 150c-22 30-38 72-40 110" stroke="#fff" stroke-width="16" stroke-linecap="round" fill="none" opacity=".7"/>
+    <circle cx="256" cy="290" r="66" fill="url(#yolk)"/>
+    <circle cx="234" cy="268" r="16" fill="#fff" opacity=".45"/>
+  </g>
+</svg>

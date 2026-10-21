@@ -62,6 +62,7 @@ export const settingsSchema = z
     areaName: z.string().trim().min(1).max(80),
     supportPhone: z.string().trim().max(20),
     pincodes: z.array(pincodeSchema),
+    openTime: timeString,
     cutoff: timeString,
     deadline: timeString,
     daysAhead: z.number().int().min(1).max(7),
@@ -73,7 +74,8 @@ export const settingsSchema = z
     codEnabled: z.boolean(),
     upiOnDelivery: z.boolean(),
   })
-  .refine((s) => s.codEnabled || s.upiOnDelivery, { message: "Turn on at least one payment option.", path: ["codEnabled"] });
+  .refine((s) => s.codEnabled || s.upiOnDelivery, { message: "Turn on at least one payment option.", path: ["codEnabled"] })
+  .refine((s) => s.openTime < s.cutoff, { message: "The store must open before it closes.", path: ["openTime"] });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 
 export const pricingSchema = z.object({

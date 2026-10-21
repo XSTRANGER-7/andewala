@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CartCheckout } from "@/components/cart/CartCheckout";
 import { SiteShell } from "@/components/layout/SiteShell";
 import { OrderCard } from "@/components/order/OrderCard";
-import { Note } from "@/components/ui/Note";
+import { ClosedBanner } from "@/components/store/StoreStatus";
 import { fmtTime, nowIst } from "@/lib/time";
 import { ACTIVE_STATUSES } from "@/lib/types";
 import { getAvailability, listCustomerOrders } from "@/server/orders";
@@ -40,11 +40,7 @@ export default async function CartPage({ searchParams }: Props) {
           </p>
         </header>
 
-        {!availability.status.open && (
-          <Note tone={availability.status.tone === "bad" ? "bad" : "warn"}>
-            <b>{availability.status.text}.</b> {availability.status.detail}
-          </Note>
-        )}
+        <ClosedBanner status={availability.status} />
 
         <CartCheckout a={availability} addTrays={addTrays} newAddress={sp.newAddress === "1"} account={account} />
 

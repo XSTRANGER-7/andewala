@@ -29,7 +29,14 @@ model StoreConfig {
   costDelivery       Float     @default(8)
   targetContribution Float     @default(13)
   stock              Int       @default(0)
+  /// Legacy pause switch, replaced by storeMode.
   salesPaused        Boolean   @default(false)
+  /// Store opens for orders at this time each day (closes at `cutoff`).
+  openTime           String    @default("09:00")
+  /// "auto" follows openTime..cutoff; "open" / "closed" are the admin's manual override.
+  storeMode          String    @default("auto")
+  /// Admin switch: show Out of stock and stop orders, whatever the tray count.
+  outOfStock         Boolean   @default(false)
   cutoff             String    @default("17:00")
   deadline           String    @default("21:00")
   daysAhead          Int       @default(3)

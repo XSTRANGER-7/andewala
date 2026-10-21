@@ -8,6 +8,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { IconUser } from "@/components/ui/Icons";
 import { deliveryFeeFor } from "@/lib/pricing";
 import { Button } from "@/components/ui/Button";
+import { ClosedButton } from "@/components/store/StoreStatus";
 import { useToast } from "@/components/ui/Toast";
 import { IconCheck, IconClock, IconTruck } from "@/components/ui/Icons";
 import { addToCart, useCartDraft } from "@/lib/cart";
@@ -102,17 +103,21 @@ function EmptyCart({ a }: { a: Availability }) {
         <h2 className="font-display text-2xl font-bold">Your cart is empty</h2>
         <p className="mx-auto max-w-sm text-sm text-ink-2">Add a tray of farm-fresh eggs to get started. Your cart stays on this phone, so you can finish later.</p>
       </div>
-      <Button
-        variant="sage"
-        size="lg"
-        disabled={!canBuy}
-        onClick={() => {
-          addToCart(1);
-          toast("1 tray in your cart");
-        }}
-      >
-        Add 1 tray · {inr(a.price)}
-      </Button>
+      {!canBuy && a.status.board ? (
+        <ClosedButton board={a.status.board} detail={a.status.detail} size="lg" className="w-64" />
+      ) : (
+        <Button
+          variant="sage"
+          size="lg"
+          disabled={!canBuy}
+          onClick={() => {
+            addToCart(1);
+            toast("1 tray in your cart");
+          }}
+        >
+          Add 1 tray · {inr(a.price)}
+        </Button>
+      )}
       <ul className="grid gap-2 text-left text-sm text-ink-2 sm:grid-cols-3 sm:gap-4">
         <li className="flex items-center gap-2">
           <IconTruck width={16} height={16} className="text-forest-900" />

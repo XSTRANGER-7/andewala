@@ -22,6 +22,7 @@ export function SettingsForm({ settings }: Props) {
   const [supportPhone, setSupportPhone] = useState(settings.supportPhone);
   const [pincodes, setPincodes] = useState(settings.pincodes.join(", "));
   const [cutoff, setCutoff] = useState(settings.cutoff);
+  const [openTime, setOpenTime] = useState(settings.openTime);
   const [deadline, setDeadline] = useState(settings.deadline);
   const [daysAhead, setDaysAhead] = useState(String(settings.daysAhead));
   const [slots, setSlots] = useState<DeliverySlot[]>(settings.slots);
@@ -46,6 +47,7 @@ export function SettingsForm({ settings }: Props) {
         areaName,
         supportPhone,
         pincodes: pins,
+        openTime,
         cutoff,
         deadline,
         daysAhead: Number(daysAhead),
@@ -91,9 +93,13 @@ export function SettingsForm({ settings }: Props) {
       </section>
 
       <section className="card grid gap-4">
-        <h2 className="font-display text-lg font-bold">Same-day rules</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Same-day order cutoff" htmlFor="g-cut" hint="5:00 PM is a safe start." error={errors.cutoff}>
+        <h2 className="font-display text-lg font-bold">Store hours and same-day rules</h2>
+        <p className="-mt-2 text-sm text-ink-2">In automatic mode the store takes orders between these times every day. Use the store switch at the top of admin to open or close it by hand.</p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Store opens at" htmlFor="g-open" hint="Default 9:00 AM." error={errors.openTime}>
+            <input id="g-open" type="time" className="input" value={openTime} onChange={(e) => setOpenTime(e.target.value)} />
+          </Field>
+          <Field label="Store closes at (order cutoff)" htmlFor="g-cut" hint="Default 5:00 PM." error={errors.cutoff}>
             <input id="g-cut" type="time" className="input" value={cutoff} onChange={(e) => setCutoff(e.target.value)} />
           </Field>
           <Field label="Last delivery by" htmlFor="g-dead" error={errors.deadline}>

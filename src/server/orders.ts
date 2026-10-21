@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { Order, Prisma } from "@prisma/client";
 import { lockStore, prisma, TX_OPTIONS } from "./db";
 import { getSettings, updateSettings } from "./settings";
@@ -63,11 +64,12 @@ export async function getBookings(tx: Tx = prisma, today = nowIst().date): Promi
   return rows.map((r) => ({ ...r, status: r.status as OrderStatus }));
 }
 
-export async function getAvailability(): Promise<Availability> {
+/** Live availability, computed once per request and shared by the page and its shell. */
+export const getAvailability = cache(async (): Promise<Availability> => {
   const now = nowIst();
   const [settings, bookings] = await Promise.all([getSettings(), getBookings(prisma, now.date)]);
   return computeAvailability(settings, bookings, now);
-}
+});
 
 export type PlaceOrderResult = { ok: true; order: OrderView } | { ok: false; error: string; field?: string };
 

@@ -15,6 +15,9 @@ export type Costs = {
 };
 
 /** The owner-editable store settings, as the app uses them. */
+/** "auto" opens and closes by the clock; "open" and "closed" are the admin's manual override. */
+export type StoreMode = "auto" | "open" | "closed";
+
 export type StoreSettings = {
   storeName: string;
   areaName: string;
@@ -25,7 +28,10 @@ export type StoreSettings = {
   costs: Costs;
   targetContribution: number;
   stock: number;
-  salesPaused: boolean;
+  /** Store opens for orders at this time (HH:MM, IST); it closes at `cutoff`. */
+  openTime: string;
+  storeMode: StoreMode;
+  outOfStock: boolean;
   cutoff: string;
   deadline: string;
   daysAhead: number;
@@ -100,12 +106,18 @@ export type DayAvailability = {
   open: boolean;
 };
 
+/** Why the store is or isn't taking orders. */
+export type ShopReason = "open" | "closed" | "before_hours" | "after_hours" | "out_of_stock" | "sold_out";
+
 export type ShopStatus = {
   open: boolean;
   sameDay: boolean;
+  reason: ShopReason;
   tone: "good" | "warn" | "bad";
   text: string;
   detail: string;
+  /** The hanging sign shown on order buttons while closed, or null when open. */
+  board: { title: string; sub: string } | null;
 };
 
 /** Everything the order form needs, computed server-side at request time. */

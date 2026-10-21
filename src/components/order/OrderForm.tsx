@@ -10,6 +10,7 @@ import { Note } from "@/components/ui/Note";
 import { Pill } from "@/components/ui/Pill";
 import { Stepper } from "@/components/ui/Stepper";
 import { IconPin } from "@/components/ui/Icons";
+import { ClosedButton } from "@/components/store/StoreStatus";
 import { useToast } from "@/components/ui/Toast";
 import { inr } from "@/lib/money";
 import { deliveryFeeFor } from "@/lib/pricing";
@@ -267,9 +268,13 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
         <SummaryLines trays={trays} price={a.price} subtotal={subtotal} fee={fee} total={total} a={a} />
         <p className="text-sm text-ink-2">{day && slot ? `Delivery ${day.label.toLowerCase() === "today" ? "today" : day.long}, ${slot.label}` : "No delivery window selected"}</p>
         {errors.form && <Note tone="bad">{errors.form}</Note>}
-        <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating} className="w-full">
-          {locating ? "Checking your location…" : `Place order · ${inr(total)}`}
-        </Button>
+        {a.status.board ? (
+          <ClosedButton board={a.status.board} detail={a.status.detail} size="lg" />
+        ) : (
+          <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating} className="w-full">
+            {locating ? "Checking your location…" : `Place order · ${inr(total)}`}
+          </Button>
+        )}
         <p className="text-xs text-ink-3">Your price is locked when you order. Cancel free of charge until we pack it.</p>
       </aside>
 
@@ -284,9 +289,13 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
               {fee === 0 && a.deliveryFee > 0 ? " · free delivery" : ""}
             </div>
           </div>
-          <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating}>
-            {locating ? "Checking…" : "Place order"}
-          </Button>
+          {a.status.board ? (
+            <ClosedButton board={a.status.board} detail={a.status.detail} size="md" className="w-44 shrink-0 min-w-0" />
+          ) : (
+            <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating}>
+              {locating ? "Checking…" : "Place order"}
+            </Button>
+          )}
         </div>
       </div>
 

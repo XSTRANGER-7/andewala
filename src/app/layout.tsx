@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 
 const bricolage = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", weight: ["500", "700", "800"] });
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-figtree", weight: ["400", "500", "600", "700"] });
@@ -14,6 +15,17 @@ export const metadata: Metadata = {
   title: { default: "AndeWala · Farm-fresh eggs, delivered same day", template: "%s · AndeWala" },
   description: "30-egg trays at today's fair farm price, delivered to your door by evening. Order before the cutoff for same-day delivery.",
   openGraph: { type: "website", siteName: "AndeWala", title: "AndeWala", description: "Farm-fresh 30-egg trays delivered same day." },
+  applicationName: "AndeWala",
+  // iPhone / iPad: open full screen from the home screen, with the app's own name and icon.
+  appleWebApp: { capable: true, title: "AndeWala", statusBarStyle: "default" },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
@@ -27,7 +39,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${bricolage.variable} ${figtree.variable} ${jetbrains.variable} h-full`}>
       <body className="flex min-h-full flex-col">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          {children}
+          <InstallPrompt />
+        </ToastProvider>
       </body>
     </html>
   );

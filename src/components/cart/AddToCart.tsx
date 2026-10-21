@@ -4,7 +4,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { buttonClass, type ButtonSize, type ButtonVariant } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import { cn } from "@/lib/cn";
 import { addToCart } from "@/lib/cart";
+import { ClosedButton, useStoreStatus } from "@/components/store/StoreStatus";
 
 type Props = {
   /** Exact tray count to put in the cart; omit to keep the current cart (or start one with a single tray). */
@@ -25,6 +27,12 @@ type Props = {
  */
 export function AddToCart({ trays, variant = "sage", size = "md", className, plain, onClick, children }: Props) {
   const { toast } = useToast();
+  const status = useStoreStatus();
+  // Store closed or out of stock: a hanging sign over a disabled button, so nobody can start an order.
+  if (status && !status.open && status.board) {
+    if (plain) return <span className={cn(className, "cursor-not-allowed opacity-60")} aria-disabled="true">{status.text}</span>;
+    return <ClosedButton board={status.board} detail={status.detail} size={size === "lg" ? "lg" : size === "sm" ? "sm" : "md"} className={cn(className, "shadow-none")} />;
+  }
   return (
     <Link
       href="/cart"

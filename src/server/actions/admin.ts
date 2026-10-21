@@ -1,5 +1,6 @@
 "use server";
 
+import type { StoreMode } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/server/session";
 import { getSettings, updateSettings } from "@/server/settings";
@@ -128,6 +129,7 @@ export async function saveSettingsAction(input: SettingsInput): Promise<AdminRes
       areaName: s.areaName,
       supportPhone: s.supportPhone,
       pincodesJson: JSON.stringify(s.pincodes),
+      openTime: s.openTime,
       cutoff: s.cutoff,
       deadline: s.deadline,
       daysAhead: s.daysAhead,
@@ -147,14 +149,34 @@ export async function saveSettingsAction(input: SettingsInput): Promise<AdminRes
   }
 }
 
-export async function togglePauseAction(): Promise<AdminResult> {
+const MODE_TEXT: Record<StoreMode, { audit: string; toast: string }> = {
+  auto: { audit: "Store set to automatic hours", toast: "Store follows its hours again" },
+  open: { audit: "Store opened manually", toast: "Store is open" },
+  closed: { audit: "Store closed manually", toast: "Store is closed" },
+};
+
+/** Open, close, or hand the store back to its daily hours. */
+export async function setStoreModeAction(mode: StoreMode): Promise<AdminResult> {
+  if (mode !== "auto" && mode !== "open" && mode !== "closed") return { ok: false, errors: { form: "Unknown store mode." } };
   try {
     const admin = await requireAdmin();
-    const s = await getSettings();
-    await updateSettings({ salesPaused: !s.salesPaused });
-    await logAudit(admin.name, s.salesPaused ? "Resumed sales" : "Paused sales");
+    await updateSettings({ storeMode: mode, salesPaused: mode === "closed" });
+    await logAudit(admin.name, MODE_TEXT[mode].audit);
     refreshAll();
-    return { ok: true, message: s.salesPaused ? "Sales resumed" : "Sales paused" };
+    return { ok: true, message: MODE_TEXT[mode].toast };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Mark the store out of stock (or back in stock). */
+export async function setOutOfStockAction(outOfStock: boolean): Promise<AdminResult> {
+  try {
+    const admin = await requireAdmin();
+    await updateSettings({ outOfStock: !!outOfStock });
+    await logAudit(admin.name, outOfStock ? "Marked out of stock" : "Marked back in stock");
+    refreshAll();
+    return { ok: true, message: outOfStock ? "Marked out of stock" : "Back in stock" };
   } catch (e) {
     return fail(e);
   }

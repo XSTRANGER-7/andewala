@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ComponentType, SVGProps } from "react";
 import { LogoutButton } from "@/components/account/LogoutButton";
+import { InstallAppButton } from "@/components/pwa/InstallPrompt";
 import { SiteShell } from "@/components/layout/SiteShell";
 import { IconArrow, IconPin, IconQuestion, IconTray, IconUser } from "@/components/ui/Icons";
 import { StatusPill } from "@/components/ui/Pill";
@@ -80,6 +81,8 @@ export default async function AccountPage() {
             <StatusPill status={active[0].status} />
           </Link>
         )}
+
+        <InstallAppButton className="card flex items-center justify-center gap-2 border-dashed border-forest-900/40 bg-mint-50 py-3.5 text-sm font-bold text-forest-900 transition hover:border-forest-900" />
 
         <nav className="grid gap-2" aria-label="Account sections">
           {options.map(({ href, label, sub, Icon, badge }) => (
