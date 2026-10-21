@@ -1,0 +1,159 @@
+// AndeWala data model, on Postgres (Supabase).
+// DATABASE_URL: Supabase pooled connection (port 6543, ?pgbouncer=true) used by the app.
+// DIRECT_URL:   Supabase session/direct connection (port 5432) used to create and change tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// Single-row table (id = 1) holding everything the owner configures.
+model StoreConfig {
+  id                 Int       @id @default(1)
+  storeName          String    @default("AndeWala")
+  areaName           String    @default("our delivery zone")
+  supportPhone       String    @default("")
+  price              Int       @default(210)
+  priceUpdatedAt     DateTime?
+  scheduledPrice     Int?
+  scheduledDate      String?
+  costFarm           Float     @default(180)
+  costInbound        Float     @default(4)
+  costPackaging      Float     @default(4)
+  costPayment        Float     @default(1)
+  costDelivery       Float     @default(8)
+  targetContribution Float     @default(13)
+  stock              Int       @default(0)
+  salesPaused        Boolean   @default(false)
+  cutoff             String    @default("17:00")
+  deadline           String    @default("21:00")
+  daysAhead          Int       @default(3)
+  /// JSON array of { id, label, start, end, capacity }
+  slotsJson          String    @default("[]")
+  deliveryFee        Int       @default(15)
+  freeDeliveryFrom   Int       @default(2)
+  maxTrays           Int       @default(10)
+  /// JSON array of 6-digit PIN codes; empty = deliver anywhere
+  pincodesJson       String    @default("[]")
+  codEnabled         Boolean   @default(true)
+  upiOnDelivery      Boolean   @default(true)
+  updatedAt          DateTime  @updatedAt
+}
+
+model Order {
+  id            String   @id
+  customerId    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  date          String
+  slotId        String
+  slotLabel     String
+  trays         Int
+  unitPrice     Int
+  deliveryFee   Int
+  total         Int
+  productCost   Float
+  deliveryCost  Float
+  name          String
+  phone         String
+  address       String
+  landmark      String   @default("")
+  pincode       String
+  notes         String   @default("")
+  payment       String
+  paymentStatus String   @default("pending")
+  status        String   @default("placed")
+  /// JSON array of { status, at, by }
+  historyJson   String   @default("[]")
+  issueText     String?
+  issueAt       DateTime?
+  issueResolved Boolean  @default(false)
+
+  @@index([customerId])
+  @@index([date, slotId])
+  @@index([status])
+  @@index([phone])
+}
+
+model AuditLog {
+  id     Int      @id @default(autoincrement())
+  at     DateTime @default(now())
+  by     String
+  action String
+  detail String   @default("")
+
+  @@index([at])
+}
+
+model Subscriber {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+/// A customer account. Signs in with a one-time code sent to either contact.
+model User {
+  id        String    @id @default(cuid())
+  name      String    @default("")
+  /// 10-digit Indian mobile, unique when set
+  phone     String?   @unique
+  email     String?   @unique
+  phoneVerifiedAt DateTime?
+  emailVerifiedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  addresses Address[]
+  sessions  Session[]
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String   @default("Home")
+  name      String
+  phone     String
+  address   String
+  landmark  String   @default("")
+  pincode   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// A login session; the cookie holds a signed reference to this row so it can be revoked.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userAgent String   @default("")
+
+  @@index([userId])
+}
+
+/// One-time login codes. Only a hash of the code is stored.
+model OtpCode {
+  id         String    @id @default(cuid())
+  /// "phone" or "email"
+  channel    String
+  /// normalised phone (10 digits) or lower-case email
+  target     String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  ip         String    @default("")
+  createdAt  DateTime  @default(now())
+
+  @@index([target, createdAt])
+  @@index([ip, createdAt])
+}

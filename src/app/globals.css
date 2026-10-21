@@ -1,26 +1,230 @@
 @import "tailwindcss";
 
+/*
+  Design tokens. Palette follows the mint / sage / forest reference with a
+  yolk accent for the egg brand. Fonts are loaded by next/font in layout.tsx.
+*/
+@theme {
+  --color-mint-50: #f6faf7;
+  --color-mint-100: #e9f1eb;
+  --color-mint-200: #d9e7dd;
+  --color-sage-300: #b7cfbf;
+  --color-sage-400: #93b5a0;
+  --color-sage-500: #7ea891;
+  --color-sage-600: #648f78;
+  --color-forest-700: #2f5d4a;
+  --color-forest-800: #26503f;
+  --color-forest-900: #1f4d3f;
+  --color-ink: #1c2420;
+  --color-ink-2: #56605a;
+  --color-ink-3: #848b85;
+  --color-line: #dfe5e0;
+  --color-paper: #ffffff;
+  --color-yolk: #f0a400;
+  --color-yolk-soft: #fdf0cf;
+  --color-yolk-ink: #4a3200;
+  --color-good: #1f7a4d;
+  --color-good-soft: #dcefe3;
+  --color-warn: #a86400;
+  --color-warn-soft: #fbecd2;
+  --color-bad: #b3362c;
+  --color-bad-soft: #f8dedb;
+  --color-shell: #f3ead9;
+  --color-shell-edge: #d6c8b1;
+
+  --font-display: var(--font-bricolage), "Figtree", system-ui, sans-serif;
+  --font-sans: var(--font-figtree), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --radius-card: 14px;
+  --shadow-soft: 0 10px 30px rgb(31 77 63 / 0.08);
+  --shadow-float: 0 18px 50px rgb(31 77 63 / 0.14);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Base element styles live in the base layer so utility classes can override them. */
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-yolk);
+  outline-offset: 2px;
+}
+
+/* Respect reduced motion: slow decorative loops right down instead of removing them, so nothing ends up blank. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- reusable primitives ------------------------------------------------ */
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-7xl px-3 sm:px-5 lg:px-6;
+  }
+  @media (width >= 96rem) {
+    .container-x { max-width: 90rem; }
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.12em] text-ink-3;
+  }
+  .section-title {
+    @apply font-display text-2xl font-semibold uppercase tracking-[0.06em] text-forest-700 sm:text-3xl;
+  }
+  .input {
+    @apply w-full min-w-0 rounded-lg border border-line bg-paper px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-3 transition focus:border-forest-700 focus:outline-none focus:ring-[3px] focus:ring-forest-700/20 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .card {
+    @apply rounded-[var(--radius-card)] border border-line bg-paper p-4 sm:p-5;
+  }
+}
+
+/* hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* offer marquee: the track holds two copies of the items and slides by one copy's width */
+@keyframes marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 22s linear infinite;
+  will-change: transform;
+}
+.marquee:hover .marquee-track,
+.marquee:focus-within .marquee-track {
+  animation-play-state: paused;
+}
+
+/* live dot beside the delivery area */
+@keyframes live-ping {
+  0% { transform: scale(1); opacity: .8; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.live-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--color-good);
+  animation: live-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite;
+}
+
+/* hero tray: gentle float, eggs pop in one by one on first paint */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.float { animation: float 6s ease-in-out infinite; }
+@keyframes egg-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.85); }
+  to { opacity: 1; transform: none; }
+}
+.egg-pop {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: egg-pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* scroll reveal: content is visible unless the Reveal component armed it, and armed content shows once seen */
+.reveal-armed { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.reveal-armed.is-visible { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .egg-pop { opacity: 1; } }
+
+/* testimonials: an endless, slow sideways scroll that pauses on hover or touch */
+@keyframes reviews {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+.reviews-track {
+  display: flex;
+  width: max-content;
+  animation: reviews 45s linear infinite;
+  will-change: transform;
+}
+.reviews:hover .reviews-track,
+.reviews:focus-within .reviews-track,
+.reviews:active .reviews-track { animation-play-state: paused; }
+.reviews { mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+
+/* story scenes (How it works) */
+@keyframes tap-ring { from { transform: scale(0.4); opacity: 0.9; } to { transform: scale(2.2); opacity: 0; } }
+.tap-ring { transform-box: fill-box; transform-origin: center; animation: tap-ring 1.4s ease-out infinite; }
+@keyframes tap-finger { 0%, 100% { transform: translate(6px, 6px); } 50% { transform: translate(0, 0); } }
+.tap-finger { animation: tap-finger 1.4s ease-in-out infinite; }
+@keyframes pop-late { 0%, 35% { opacity: 0; transform: translateY(6px) scale(0.9); } 50%, 100% { opacity: 1; transform: none; } }
+.pop-late { transform-box: fill-box; transform-origin: center; animation: pop-late 4s ease-out infinite; }
+@keyframes ride { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.ride { animation: ride 0.7s ease-in-out infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.wheel { animation: spin 1.2s linear infinite; }
+.sun { animation: spin 40s linear infinite; }
+@keyframes whoosh { 0% { opacity: 0; transform: translateX(10px); } 40% { opacity: 0.8; } 100% { opacity: 0; transform: translateX(-14px); } }
+.whoosh { animation: whoosh 1s ease-out infinite; }
+@keyframes hen { 0%, 70%, 100% { transform: rotate(0); } 80% { transform: rotate(10deg); } 90% { transform: rotate(-4deg); } }
+.hen { animation: hen 2.4s ease-in-out infinite; }
+@keyframes hand-over { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(6px); } }
+.hand-over { animation: hand-over 2.6s ease-in-out infinite; }
+@keyframes tray-lift { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-2deg); } }
+.tray-lift { animation: tray-lift 2.6s ease-in-out infinite; }
+@keyframes sparkle { 0%, 100% { opacity: 0; transform: scale(0.5); } 50% { opacity: 1; transform: scale(1); } }
+.sparkle { transform-box: fill-box; transform-origin: center; animation: sparkle 1.8s ease-in-out infinite; }
+@keyframes route { to { stroke-dashoffset: -28; } }
+.route-dash { animation: route 1.2s linear infinite; }
+
+/* header cart: a quick pop when trays are added */
+@keyframes cart-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22) rotate(-6deg); }
+  65% { transform: scale(0.94) rotate(3deg); }
+  100% { transform: scale(1); }
+}
+.cart-pop { animation: cart-pop 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* subtle entrance for toasts */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.toast-in { animation: toast-in 180ms ease-out; }
