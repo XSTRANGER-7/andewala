@@ -110,6 +110,7 @@ The app uses Supabase in two ways. Prisma stays as the code layer either way.
 
 **1. The database (required).** All data lives in your Supabase Postgres database.
 - `DATABASE_URL` is the pooled connection (port 6543, `?pgbouncer=true&connection_limit=1`), used by the app.
+- On Vercel, use the pooler host (`aws-0-<region>.pooler.supabase.com`) for both. The direct host `db.<ref>.supabase.co` is IPv6-only, and Vercel cannot reach it, so every page fails with "Can't reach database server".
 - `DIRECT_URL` is the session or direct connection (port 5432), used only by `npm run db:deploy` to create and change tables.
 - Copy both from the Supabase dashboard: **Connect > ORMs > Prisma**, and put in your database password.
 
