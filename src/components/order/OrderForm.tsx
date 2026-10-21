@@ -184,27 +184,8 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
               ))}
             </div>
           </div>
-          <div className="grid gap-2">
-            <span className="eyebrow">Time window</span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {(day?.slots ?? []).map((s) => (
-                <Choice
-                  key={s.id}
-                  name="slot"
-                  value={s.id}
-                  checked={s.id === slotId}
-                  disabled={!s.ok}
-                  onChange={(v) => {
-                    setSlotId(v);
-                    persist({ slotId: v });
-                  }}
-                  title={s.label}
-                  sub={s.ok ? `${s.left} spot${s.left === 1 ? "" : "s"} left` : s.reason === "full" ? "Full" : "Closed"}
-                />
-              ))}
-            </div>
-            {errors.slot && <p className="text-xs text-bad">{errors.slot}</p>}
-          </div>
+          {errors.slot && <p className="text-xs text-bad">{errors.slot}</p>}
+          <p className="text-xs text-ink-3">Delivered to your door by {fmtTime(a.deadline)} on the day you pick.</p>
         </section>
 
         {/* address */}
@@ -265,7 +246,7 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
       <aside className="card hidden content-start gap-4 self-start lg:sticky lg:top-20 lg:grid">
         <h2 className="font-display text-xl font-bold">Summary</h2>
         <SummaryLines trays={trays} price={a.price} subtotal={subtotal} fee={fee} total={total} a={a} />
-        <p className="text-sm text-ink-2">{day && slot ? `Delivery ${day.label.toLowerCase() === "today" ? "today" : day.long}, ${slot.label}` : "No delivery window selected"}</p>
+        <p className="text-sm text-ink-2">{day && slot ? `Delivery ${day.label.toLowerCase() === "today" ? "today" : day.long}, by ${fmtTime(a.deadline)}` : "No delivery day available"}</p>
         {errors.form && <Note tone="bad">{errors.form}</Note>}
         {a.status.board ? (
           <ClosedButton board={a.status.board} detail={a.status.detail} size="lg" />
@@ -284,7 +265,7 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
           <div>
             <div className="num text-lg font-bold">{inr(total)}</div>
             <div className="text-xs text-ink-3">
-              {trays} tray{trays > 1 ? "s" : ""} · {slot ? slot.label : "no window"}
+              {trays} tray{trays > 1 ? "s" : ""} · {day ? (day.label.toLowerCase() === "today" ? "today" : day.label) : "no day"}
               {fee === 0 && a.deliveryFee > 0 ? " · free delivery" : ""}
             </div>
           </div>
