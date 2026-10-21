@@ -96,6 +96,14 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
               <dd>
                 {order.customer.address}
                 {order.customer.landmark ? `, near ${order.customer.landmark}` : ""} · {order.customer.pincode}
+                {order.customer.lat !== null && order.customer.lng !== null && (
+                  <>
+                    {" · "}
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${order.customer.lat},${order.customer.lng}`} target="_blank" rel="noreferrer" className="font-semibold text-forest-900 hover:underline">
+                      View pin
+                    </a>
+                  </>
+                )}
               </dd>
             </div>
             {order.notes && <Row k="Note for rider" v={order.notes} />}

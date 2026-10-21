@@ -40,7 +40,7 @@ async function run(stockBefore: number) {
   assert(day, "at least one delivery day should be open");
   const slot = day.slots.find((s) => s.ok)!;
 
-  const base = { date: day.date, slotId: slot.id, payment: "cod" as const, name: "Smoke Test", phone: PHONE, address: "12 Test Lane, Demo Nagar", landmark: "", pincode: "110001", notes: "" };
+  const base = { date: day.date, slotId: slot.id, payment: "cod" as const, name: "Smoke Test", phone: PHONE, address: "12 Test Lane, Demo Nagar", landmark: "", pincode: "110001", lat: null, lng: null, notes: "" };
 
   // 1. a valid order
   const r1 = await placeOrder({ ...base, trays: 2 }, CUSTOMER);

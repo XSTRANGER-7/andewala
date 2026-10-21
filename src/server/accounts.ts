@@ -1,10 +1,22 @@
 import "server-only";
 import { prisma, TX_OPTIONS } from "./db";
 
-export type AddressView = { id: string; label: string; name: string; phone: string; address: string; landmark: string; pincode: string; isDefault: boolean };
+export type AddressView = {
+  id: string;
+  label: string;
+  name: string;
+  phone: string;
+  address: string;
+  landmark: string;
+  pincode: string;
+  /** Map pin, or null for an address saved before pins existed. */
+  lat: number | null;
+  lng: number | null;
+  isDefault: boolean;
+};
 export type Profile = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean; emailVerified: boolean; addresses: AddressView[] };
 
-const toView = (a: AddressView & Record<string, unknown>): AddressView => ({
+const toView = (a: AddressView): AddressView => ({
   id: a.id,
   label: a.label,
   name: a.name,
@@ -12,6 +24,8 @@ const toView = (a: AddressView & Record<string, unknown>): AddressView => ({
   address: a.address,
   landmark: a.landmark,
   pincode: a.pincode,
+  lat: a.lat ?? null,
+  lng: a.lng ?? null,
   isDefault: a.isDefault,
 });
 
@@ -44,7 +58,7 @@ export async function getAddress(userId: string, id: string): Promise<AddressVie
   return a ? toView(a) : null;
 }
 
-type AddressInput = { label: string; name: string; phone: string; address: string; landmark: string; pincode: string };
+type AddressInput = { label: string; name: string; phone: string; address: string; landmark: string; pincode: string; lat?: number | null; lng?: number | null };
 
 /** Create or update an address. The first address, or one marked default, becomes the default. */
 export async function saveAddress(userId: string, input: AddressInput, opts: { id?: string; makeDefault?: boolean } = {}): Promise<AddressView> {

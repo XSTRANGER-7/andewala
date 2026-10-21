@@ -81,7 +81,7 @@ export type OrderView = {
   total: number;
   productCost: number;
   deliveryCost: number;
-  customer: { name: string; phone: string; address: string; landmark: string; pincode: string };
+  customer: { name: string; phone: string; address: string; landmark: string; pincode: string; lat: number | null; lng: number | null };
   notes: string;
   payment: PaymentMethod;
   paymentStatus: "pending" | "paid";

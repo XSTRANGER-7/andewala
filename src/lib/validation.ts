@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const latSchema = z.number().finite().min(-90).max(90);
+const lngSchema = z.number().finite().min(-180).max(180);
+
 export const phoneSchema = z
   .string()
   .transform((v) => v.replace(/\D/g, "").slice(-10))
@@ -17,6 +20,8 @@ export const placeOrderSchema = z.object({
   address: z.string().trim().min(8, "Add your house number, street and area.").max(300),
   landmark: z.string().trim().max(120).default(""),
   pincode: pincodeSchema,
+  lat: latSchema.nullable().default(null),
+  lng: lngSchema.nullable().default(null),
   notes: z.string().trim().max(200).default(""),
 });
 export type PlaceOrderInput = z.input<typeof placeOrderSchema>;
@@ -107,14 +112,19 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
   return out;
 }
 
-export const addressSchema = z.object({
-  label: z.string().trim().min(1).max(20).default("Home"),
-  name: z.string().trim().min(2, "Enter the name for delivery.").max(80),
-  phone: phoneSchema,
-  address: z.string().trim().min(8, "Add your house number, street and area.").max(300),
-  landmark: z.string().trim().max(120).default(""),
-  pincode: pincodeSchema,
-});
+export const addressSchema = z
+  .object({
+    label: z.string().trim().min(1).max(20).default("Home"),
+    name: z.string().trim().min(2, "Enter the name for delivery.").max(80),
+    phone: phoneSchema,
+    address: z.string().trim().min(8, "Add your house number, street and area.").max(300),
+    landmark: z.string().trim().max(120).default(""),
+    pincode: pincodeSchema,
+    /** The map pin. Required when saving from the address form. */
+    lat: latSchema.nullable().default(null),
+    lng: lngSchema.nullable().default(null),
+  })
+  .refine((a) => (a.lat === null) === (a.lng === null), { path: ["pin"], message: "Drop the pin on the map again." });
 export type AddressInput = z.input<typeof addressSchema>;
 
 /** Sign-up details collected right after the first mobile login. */

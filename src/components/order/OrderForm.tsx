@@ -9,6 +9,7 @@ import { Field } from "@/components/ui/Field";
 import { Note } from "@/components/ui/Note";
 import { Pill } from "@/components/ui/Pill";
 import { Stepper } from "@/components/ui/Stepper";
+import { IconPin } from "@/components/ui/Icons";
 import { useToast } from "@/components/ui/Toast";
 import { inr } from "@/lib/money";
 import { deliveryFeeFor } from "@/lib/pricing";
@@ -18,6 +19,7 @@ import { placeOrderAction } from "@/server/actions/order";
 import { clearDraft, readDraft, setCartTrays, writeDraft } from "@/lib/cart";
 import { AddressBook } from "@/components/account/AddressBook";
 import type { AddressView } from "@/server/accounts";
+import { distanceMeters, formatDistance, getCurrentPosition } from "@/lib/geo";
 
 export type CheckoutAccount = { addresses: AddressView[]; defaults: { name: string; phone: string } };
 
@@ -56,6 +58,9 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   const [notesState, setNotes] = useState(() => draftState?.notes ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
+  /** Set when the customer seems to be somewhere else than the delivery pin; asks them to confirm. */
+  const [farAway, setFarAway] = useState<{ distance: number; label: string } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   // Before hydration, show the server defaults so the first paint matches; the draft takes over right after.
   const dateWanted = hydrated ? dateState : null;
@@ -83,15 +88,40 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   const fee = deliveryFeeFor(trays, a.deliveryFee, a.freeDeliveryFrom);
   const subtotal = trays * a.price;
   const total = subtotal + fee;
-  const canSubmit = a.status.open && !!date && !!slot?.ok && a.available > 0 && !!addressId && !submitting;
+  const canSubmit = a.status.open && !!date && !!slot?.ok && a.available > 0 && !!addressId && !submitting && !locating;
+
+  function showAddressError(message: string) {
+    setErrors({ addressId: message });
+    document.getElementById("delivery-address")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!date || !slotId) return;
-    if (!addressId) {
-      setErrors({ addressId: "Add a delivery address first." });
-      return;
+    const address = account.addresses.find((x) => x.id === addressId);
+    if (!address) return showAddressError("Add a delivery address first.");
+    if (address.lat === null || address.lng === null) return showAddressError("Drop a pin on the map for this address so the rider can find you. Tap Add map pin.");
+
+    // Compare where the customer is now with the delivery pin. If they're
+    // clearly somewhere else, ask before ordering. If location isn't
+    // available (blocked, no GPS), go ahead: the pin is what the rider uses.
+    setLocating(true);
+    const here = await getCurrentPosition({ timeout: 8_000, maximumAge: 120_000 });
+    setLocating(false);
+    if (here.ok) {
+      const distance = distanceMeters(here.pos, { lat: address.lat, lng: address.lng });
+      const slack = 300 + Math.min(here.pos.accuracy, 1500);
+      if (distance > slack) {
+        setFarAway({ distance, label: address.label });
+        return;
+      }
     }
+    await place();
+  }
+
+  async function place() {
+    if (!date || !slotId || !addressId) return;
+    setFarAway(null);
     setSubmitting(true);
     setErrors({});
     const res = await placeOrderAction({ trays, date, slotId, payment, addressId, notes });
@@ -237,8 +267,8 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
         <SummaryLines trays={trays} price={a.price} subtotal={subtotal} fee={fee} total={total} a={a} />
         <p className="text-sm text-ink-2">{day && slot ? `Delivery ${day.label.toLowerCase() === "today" ? "today" : day.long}, ${slot.label}` : "No delivery window selected"}</p>
         {errors.form && <Note tone="bad">{errors.form}</Note>}
-        <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting} className="w-full">
-          Place order · {inr(total)}
+        <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating} className="w-full">
+          {locating ? "Checking your location…" : `Place order · ${inr(total)}`}
         </Button>
         <p className="text-xs text-ink-3">Your price is locked when you order. Cancel free of charge until we pack it.</p>
       </aside>
@@ -254,12 +284,65 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
               {fee === 0 && a.deliveryFee > 0 ? " · free delivery" : ""}
             </div>
           </div>
-          <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting}>
-            Place order
+          <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating}>
+            {locating ? "Checking…" : "Place order"}
           </Button>
         </div>
       </div>
+
+      {farAway && (
+        <FarAwayDialog
+          distance={farAway.distance}
+          label={farAway.label}
+          onConfirm={() => void place()}
+          onChange={() => {
+            setFarAway(null);
+            document.getElementById("delivery-address")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+      )}
     </form>
+  );
+}
+
+/** "Are you sure?" when the delivery pin is far from where the customer is right now. */
+function FarAwayDialog({ distance, label, onConfirm, onChange }: { distance: number; label: string; onConfirm: () => void; onChange: () => void }) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    confirmRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onChange();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onChange]);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-3 sm:place-items-center" onClick={onChange}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="far-title"
+        aria-describedby="far-text"
+        className="w-full max-w-md rounded-2xl bg-paper p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-warn-soft text-warn">
+          <IconPin width={22} height={22} />
+        </div>
+        <h2 id="far-title" className="font-display text-xl font-bold">
+          Deliver to this address?
+        </h2>
+        <p id="far-text" className="mt-2 text-sm text-ink-2">
+          You seem to be about <b>{formatDistance(distance)}</b> away from your <b>{label}</b> pin. This isn&apos;t your current location. Are you sure you want the order delivered there?
+        </p>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onChange}>
+            Change address
+          </Button>
+          <Button ref={confirmRef} type="button" variant="sage" onClick={onConfirm}>
+            Yes, deliver there
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

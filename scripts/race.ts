@@ -22,7 +22,7 @@ async function main() {
     const results = await Promise.all(
       Array.from({ length: 8 }, (_, i) =>
         placeOrder(
-          { trays: 1, date: day.date, slotId: slot.id, payment: "cod", name: `Race ${i}`, phone: "9000000000", address: "1 Test Road, Test Area", landmark: "", pincode: "110001", notes: "" },
+          { trays: 1, date: day.date, slotId: slot.id, payment: "cod", name: `Race ${i}`, phone: "9000000000", address: "1 Test Road, Test Area", landmark: "", pincode: "110001", lat: null, lng: null, notes: "" },
           "race-test",
         ),
       ),

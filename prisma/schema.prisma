@@ -46,10 +46,10 @@ model StoreConfig {
 }
 
 model Order {
-  id            String   @id
+  id            String    @id
   customerId    String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   date          String
   slotId        String
   slotLabel     String
@@ -62,17 +62,20 @@ model Order {
   name          String
   phone         String
   address       String
-  landmark      String   @default("")
+  landmark      String    @default("")
   pincode       String
-  notes         String   @default("")
+  /// Delivery pin copied from the address when the order was placed.
+  lat           Float?
+  lng           Float?
+  notes         String    @default("")
   payment       String
-  paymentStatus String   @default("pending")
-  status        String   @default("placed")
+  paymentStatus String    @default("pending")
+  status        String    @default("placed")
   /// JSON array of { status, at, by }
-  historyJson   String   @default("[]")
+  historyJson   String    @default("[]")
   issueText     String?
   issueAt       DateTime?
-  issueResolved Boolean  @default(false)
+  issueResolved Boolean   @default(false)
 
   @@index([customerId])
   @@index([date, slotId])
@@ -98,17 +101,17 @@ model Subscriber {
 
 /// A customer account. Signs in with a one-time code sent to either contact.
 model User {
-  id        String    @id @default(cuid())
-  name      String    @default("")
+  id              String    @id @default(cuid())
+  name            String    @default("")
   /// 10-digit Indian mobile, unique when set
-  phone     String?   @unique
-  email     String?   @unique
+  phone           String?   @unique
+  email           String?   @unique
   phoneVerifiedAt DateTime?
   emailVerifiedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  addresses Address[]
-  sessions  Session[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  addresses       Address[]
+  sessions        Session[]
 }
 
 model Address {
@@ -121,6 +124,9 @@ model Address {
   address   String
   landmark  String   @default("")
   pincode   String
+  /// Map pin dropped by the customer (WGS84). Null for addresses saved before pins existed.
+  lat       Float?
+  lng       Float?
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

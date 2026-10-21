@@ -123,6 +123,14 @@ function CustomerCell({ o }: { o: OrderView }) {
       <div className="text-xs text-ink-2">
         {o.customer.address}
         {o.customer.landmark ? `, near ${o.customer.landmark}` : ""} · {o.customer.pincode}
+        {o.customer.lat !== null && o.customer.lng !== null && (
+          <>
+            {" · "}
+            <a href={`https://www.google.com/maps/dir/?api=1&destination=${o.customer.lat},${o.customer.lng}`} target="_blank" rel="noreferrer" className="font-semibold text-forest-900 hover:underline">
+              Open pin in Maps
+            </a>
+          </>
+        )}
       </div>
       {o.notes && <div className="text-xs text-ink-3">Note: {o.notes}</div>}
       {o.issue && (

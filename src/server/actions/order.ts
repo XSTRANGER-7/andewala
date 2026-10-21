@@ -23,10 +23,11 @@ export async function placeOrderAction(input: CheckoutInput): Promise<ActionResu
     if (!profile || !profileComplete(profile)) return { ok: false, errors: { auth: "Finish your profile (name and mobile number) before ordering." } };
     const address = await getAddress(user.id, parsed.data.addressId);
     if (!address) return { ok: false, errors: { addressId: "Choose a delivery address." } };
+    if (address.lat === null || address.lng === null) return { ok: false, errors: { addressId: "Drop a pin on the map for this address so the rider can find you. Tap Edit on the address." } };
     const { addressId: _addressId, ...rest } = parsed.data;
     void _addressId;
     const result = await orders.placeOrder(
-      { ...rest, name: address.name, phone: address.phone, address: address.address, landmark: address.landmark, pincode: address.pincode },
+      { ...rest, name: address.name, phone: address.phone, address: address.address, landmark: address.landmark, pincode: address.pincode, lat: address.lat, lng: address.lng },
       user.id,
     );
     if (!result.ok) return { ok: false, errors: { [result.field === "pincode" ? "addressId" : (result.field ?? "form")]: result.error } };

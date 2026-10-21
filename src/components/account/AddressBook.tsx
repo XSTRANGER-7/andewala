@@ -74,6 +74,7 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
                   </span>
                 )}
                 {outside(a.pincode) && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">Outside delivery area</span>}
+                {a.lat === null && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">No map pin</span>}
               </span>
               <span className="text-ink-2">
                 {a.name} · {a.phone}
@@ -83,6 +84,15 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
                 {a.landmark ? `, near ${a.landmark}` : ""} · {a.pincode}
               </span>
               <span className="mt-1 flex flex-wrap gap-3 text-xs font-semibold" onClick={(e) => e.stopPropagation()}>
+                {a.lat === null ? (
+                  <button type="button" className="text-warn hover:underline" onClick={() => setEditing(a.id)}>
+                    Add map pin
+                  </button>
+                ) : (
+                  <a className="text-forest-900 hover:underline" href={`https://www.google.com/maps/search/?api=1&query=${a.lat},${a.lng}`} target="_blank" rel="noreferrer">
+                    View pin
+                  </a>
+                )}
                 <button type="button" className="text-forest-900 hover:underline" onClick={() => setEditing(a.id)}>
                   Edit
                 </button>

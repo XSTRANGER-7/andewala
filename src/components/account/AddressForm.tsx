@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Note } from "@/components/ui/Note";
 import { cn } from "@/lib/cn";
 import type { AddressView } from "@/server/accounts";
 import { saveAddressAction } from "@/server/actions/account";
+import type { LatLng, PlaceGuess } from "@/lib/geo";
+
+// The map library only runs in the browser.
+const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), {
+  ssr: false,
+  loading: () => <div className="grid h-64 place-items-center rounded-xl border border-line bg-mint-100 text-sm text-ink-3 sm:h-72">Loading map…</div>,
+});
 
 const LABELS = ["Home", "Work", "Other"];
 
@@ -30,22 +38,42 @@ export function AddressForm({ initial, defaults, pincodes, onSaved, onCancel, su
     landmark: initial?.landmark ?? "",
     pincode: initial?.pincode ?? "",
   });
+  const [pin, setPin] = useState<LatLng | null>(initial && initial.lat !== null && initial.lng !== null ? { lat: initial.lat, lng: initial.lng } : null);
+  // Fields the customer typed in themselves; the map only fills fields they haven't touched.
+  const typed = useRef(new Set<string>(initial ? ["address", "pincode"] : []));
   const [makeDefault, setMakeDefault] = useState(!initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f, v: string) => {
+    typed.current.add(k);
     setF((x) => ({ ...x, [k]: v }));
     setErrors((e) => (e[k] ? { ...e, [k]: "" } : e));
   };
 
+  function onPin(p: LatLng, guess: PlaceGuess | null) {
+    setPin(p);
+    setErrors((e) => (e.pin ? { ...e, pin: "" } : e));
+    if (!guess) return;
+    // Fill in what the pin tells us, without overwriting anything the customer typed.
+    setF((x) => ({
+      ...x,
+      address: typed.current.has("address") ? x.address : guess.line,
+      pincode: typed.current.has("pincode") || !/^\d{6}$/.test(guess.pincode) ? x.pincode : guess.pincode,
+    }));
+  }
+
   async function submit() {
-    const pin = f.pincode.trim();
-    if (pincodes.length && /^\d{6}$/.test(pin) && !pincodes.includes(pin)) {
-      setErrors({ pincode: `We don't deliver to ${pin} yet. We deliver to ${pincodes.join(", ")}.` });
+    if (!pin) {
+      setErrors({ pin: "Drop the pin on your door: move the map, or tap Use my current location." });
+      return;
+    }
+    const code = f.pincode.trim();
+    if (pincodes.length && /^\d{6}$/.test(code) && !pincodes.includes(code)) {
+      setErrors({ pincode: `We don't deliver to ${code} yet. We deliver to ${pincodes.join(", ")}.` });
       return;
     }
     setBusy(true);
-    const res = await saveAddressAction(f, { id: initial?.id, makeDefault });
+    const res = await saveAddressAction({ ...f, lat: pin.lat, lng: pin.lng }, { id: initial?.id, makeDefault });
     setBusy(false);
     if (!res.ok) return setErrors(res.errors);
     onSaved(res.data);
@@ -62,6 +90,10 @@ export function AddressForm({ initial, defaults, pincodes, onSaved, onCancel, su
         }
       }}
     >
+      <div className="grid gap-1.5">
+        <span className="text-sm font-semibold">Pin your exact location</span>
+        <MapPicker value={pin} onChange={onPin} autoLocate={!pin} fallbackPincode={f.pincode.trim() || pincodes[0]} error={errors.pin} />
+      </div>
       <div className="flex gap-2" role="radiogroup" aria-label="Address label">
         {LABELS.map((l) => (
           <button
@@ -84,7 +116,7 @@ export function AddressForm({ initial, defaults, pincodes, onSaved, onCancel, su
           <input id="ad-phone" className="input num" type="tel" inputMode="numeric" autoComplete="tel" placeholder="10-digit number" value={f.phone} onChange={(e) => set("phone", e.target.value)} />
         </Field>
       </div>
-      <Field label="House, street and area" htmlFor="ad-address" error={errors.address}>
+      <Field label="House / flat number, building, street and area" htmlFor="ad-address" error={errors.address} hint="Filled in from the pin. Add your house or flat number.">
         <textarea id="ad-address" className="input min-h-20" autoComplete="street-address" value={f.address} onChange={(e) => set("address", e.target.value)} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
