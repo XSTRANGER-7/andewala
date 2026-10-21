@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { Prisma, StoreConfig } from "@prisma/client";
 import { prisma } from "./db";
 import type { DeliverySlot, StoreSettings } from "@/lib/types";
@@ -51,8 +52,15 @@ export function toSettings(row: StoreConfig): StoreSettings {
 
 type Tx = Prisma.TransactionClient;
 
-/** Load the single settings row, creating defaults on first run. */
-export async function getSettings(tx: Tx = prisma): Promise<StoreSettings> {
+/** Read once per request and shared by the page, header and footer. */
+const loadSettings = cache((): Promise<StoreSettings> => readSettings(prisma));
+
+/** Load the single settings row, creating defaults on first run. Inside a transaction, always reads fresh. */
+export async function getSettings(tx?: Tx): Promise<StoreSettings> {
+  return tx ? readSettings(tx) : loadSettings();
+}
+
+async function readSettings(tx: Tx): Promise<StoreSettings> {
   const row =
     (await tx.storeConfig.findUnique({ where: { id: 1 } })) ??
     (await tx.storeConfig.create({ data: { id: 1, slotsJson: JSON.stringify(DEFAULT_SLOTS) } }));

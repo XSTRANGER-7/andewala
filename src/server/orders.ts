@@ -138,6 +138,11 @@ export async function getOrder(id: string): Promise<OrderView | null> {
   return row ? toOrderView(row) : null;
 }
 
+/** How many of the customer's orders are still on their way (for the header badge). */
+export async function countActiveOrders(customerId: string): Promise<number> {
+  return prisma.order.count({ where: { customerId, status: { in: ACTIVE_STATUSES } } });
+}
+
 export async function listCustomerOrders(customerId: string): Promise<OrderView[]> {
   const rows = await prisma.order.findMany({ where: { customerId }, orderBy: { createdAt: "desc" }, take: 50 });
   return rows.map(toOrderView);

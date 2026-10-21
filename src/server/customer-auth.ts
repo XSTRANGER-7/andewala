@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { prisma } from "./db";
@@ -180,13 +181,14 @@ async function sessionId(): Promise<string | null> {
 }
 
 /** The logged-in customer, or null. */
-export async function getUser(): Promise<CustomerUser | null> {
+/** The logged-in customer. Looked up once per request, however many components ask. */
+export const getUser = cache(async (): Promise<CustomerUser | null> => {
   const id = await sessionId();
   if (!id) return null;
   const s = await prisma.session.findUnique({ where: { id }, include: { user: true } });
   if (!s || s.expiresAt < new Date()) return null;
   return pick(s.user);
-}
+});
 
 export async function requireUser(): Promise<CustomerUser> {
   const u = await getUser();

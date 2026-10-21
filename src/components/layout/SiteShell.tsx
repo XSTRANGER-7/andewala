@@ -7,8 +7,7 @@ import { MobileTabBar } from "./MobileTabBar";
 import { getSettings } from "@/server/settings";
 import { getUser } from "@/server/customer-auth";
 import { listAddresses } from "@/server/accounts";
-import { listCustomerOrders } from "@/server/orders";
-import { ACTIVE_STATUSES } from "@/lib/types";
+import { countActiveOrders } from "@/server/orders";
 
 /** Public page chrome: promo strip, header (with cart badge), content, footer, and the phone tab bar. */
 export async function SiteShell({ children }: { children: ReactNode }) {
@@ -16,8 +15,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
   // pages like the 404 would otherwise be built once with stale settings.
   await connection();
   const [settings, user] = await Promise.all([getSettings(), getUser()]);
-  const [orders, addresses] = user ? await Promise.all([listCustomerOrders(user.id), listAddresses(user.id)]) : [[], null];
-  const activeOrders = orders.filter((o) => ACTIVE_STATUSES.includes(o.status)).length;
+  const [activeOrders, addresses] = user ? await Promise.all([countActiveOrders(user.id), listAddresses(user.id)]) : [0, null];
   const area = settings.pincodes.length ? settings.pincodes.join(", ") : settings.areaName;
   return (
     <>
