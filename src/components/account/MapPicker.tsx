@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Circle, Map as LeafletMap } from "leaflet";
 import { IconLocate } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
-import { geocodePincode, getCurrentPosition, locateErrorText, reverseGeocode, type LatLng, type PlaceGuess } from "@/lib/geo";
+import { geocodePincode, locateErrorText, reverseGeocode, watchBestPosition, type LatLng, type PlaceGuess, type Position } from "@/lib/geo";
 
 type Props = {
   /** The saved pin, or null when there isn't one yet. */
@@ -39,23 +39,49 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
   const [notice, setNotice] = useState<string | null>(null);
   const [place, setPlace] = useState<string | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  /** Stops the running GPS watch. */
+  const stopWatch = useRef<(() => void) | null>(null);
+  /** True once the customer drags the map themselves: from then on the GPS no longer moves it. */
+  const userMoved = useRef(false);
   useEffect(() => {
     onChangeRef.current = onChange;
   });
 
-  async function locate() {
-    setLocating(true);
-    setNotice(null);
-    const r = await getCurrentPosition();
-    setLocating(false);
-    if (!r.ok) return setNotice(locateErrorText(r.error));
+  /** Show a GPS reading: the accuracy ring, and move the pin there unless the customer is placing it by hand. */
+  async function showFix(pos: Position) {
     const m = map.current;
     if (!m) return;
-    setAccuracy(r.pos.accuracy);
+    setAccuracy(pos.accuracy);
     const L = await import("leaflet");
     ring.current?.remove();
-    ring.current = L.circle([r.pos.lat, r.pos.lng], { radius: Math.min(r.pos.accuracy, 500), color: "#1f4d3f", weight: 1, fillOpacity: 0.08, interactive: false }).addTo(m);
-    m.setView([r.pos.lat, r.pos.lng], 18);
+    ring.current = L.circle([pos.lat, pos.lng], { radius: Math.min(pos.accuracy, 1000), color: "#1f4d3f", weight: 1, fillOpacity: 0.08, interactive: false }).addTo(m);
+    if (!userMoved.current) m.setView([pos.lat, pos.lng], pos.accuracy <= 30 ? 19 : pos.accuracy <= 150 ? 18 : 16);
+  }
+
+  /**
+   * Live location. Phones first give a rough network fix, then the GPS chip
+   * tightens it over a few seconds, so keep listening and move the pin with
+   * each better reading until it is within about 10 m (or 25 s pass).
+   */
+  async function locate() {
+    stopWatch.current?.();
+    userMoved.current = false;
+    setLocating(true);
+    setNotice(null);
+    setAccuracy(null);
+    const w = watchBestPosition({ target: 10, maxWait: 25_000, onUpdate: (p) => void showFix(p) });
+    stopWatch.current = w.stop;
+    const r = await w.done;
+    if (stopWatch.current === w.stop) stopWatch.current = null;
+    setLocating(false);
+    if (!r.ok) return setNotice(locateErrorText(r.error));
+    if (r.pos.accuracy > 25) {
+      setNotice(
+        r.pos.accuracy > 150
+          ? `Your device could only find you to within about ${Math.round(r.pos.accuracy)} m (laptops and phones indoors have no clear GPS signal). Drag the map so the pin sits exactly on your door.`
+          : `GPS is accurate to about ${Math.round(r.pos.accuracy)} m here. For an exact pin, step near a window or outside and tap again, or drag the map onto your door.`,
+      );
+    }
   }
   const locateRef = useRef(locate);
   useEffect(() => {
@@ -73,6 +99,11 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(m);
       map.current = m;
       m.on("movestart", () => setMoving(true));
+      // The customer is placing the pin by hand: stop following the GPS.
+      m.on("dragstart", () => {
+        userMoved.current = true;
+        stopWatch.current?.();
+      });
       m.on("moveend", () => {
         setMoving(false);
         if (m.getZoom() < 14) return; // too far out to mean a door
@@ -101,6 +132,7 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
     })();
     return () => {
       cancelled = true;
+      stopWatch.current?.();
       if (timer.current) clearTimeout(timer.current);
       lookup.current?.abort();
       map.current?.remove();
@@ -130,7 +162,7 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
           className="absolute bottom-3 left-1/2 z-[500] inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-paper px-4 py-2 text-sm font-semibold text-forest-900 shadow-md ring-1 ring-line transition hover:bg-mint-50 disabled:opacity-70"
         >
           <IconLocate width={16} height={16} className={cn(locating && "animate-spin")} />
-          {locating ? "Finding you…" : "Use my current location"}
+          {locating ? (accuracy !== null ? `Improving accuracy… ±${Math.round(accuracy)} m` : "Finding you…") : "Use my current location"}
         </button>
         {!ready && <div className="absolute inset-0 z-[501] grid place-items-center text-sm text-ink-3">Loading map…</div>}
       </div>
@@ -140,7 +172,9 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
           : place
             ? `Pin near: ${place}`
             : "Pin placed. Move the map to adjust it."}
-        {accuracy !== null && zoomedIn && <span className="text-ink-3"> · GPS accurate to about {Math.round(accuracy)} m</span>}
+        {accuracy !== null && zoomedIn && (
+          <span className={cn("font-semibold", accuracy <= 15 ? "text-forest-900" : "text-warn")}> · GPS ±{Math.round(accuracy)} m{accuracy <= 15 ? " ✓" : ""}</span>
+        )}
       </p>
       {notice && <p className="text-xs text-warn">{notice}</p>}
       {error && <p className="text-xs text-bad">{error}</p>}

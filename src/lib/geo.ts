@@ -77,3 +77,49 @@ export async function geocodePincode(pincode: string, signal?: AbortSignal): Pro
     return null;
   }
 }
+
+/**
+ * Keep listening to the GPS until the fix is good enough. The first reading a
+ * phone gives is often a rough network fix (50–1000 m); the GPS chip then
+ * tightens it over the next seconds. `onUpdate` gets every better reading;
+ * the promise resolves with the best one once it is within `target` metres,
+ * or when `maxWait` runs out.
+ */
+export function watchBestPosition(opts: { target?: number; maxWait?: number; onUpdate?: (p: Position) => void } = {}): {
+  done: Promise<{ ok: true; pos: Position } | { ok: false; error: LocateError }>;
+  stop: () => void;
+} {
+  const target = opts.target ?? 10;
+  let stop = () => {};
+  const done = new Promise<{ ok: true; pos: Position } | { ok: false; error: LocateError }>((resolve) => {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) return resolve({ ok: false, error: "unsupported" });
+    if (!window.isSecureContext) return resolve({ ok: false, error: "insecure" });
+    let best: Position | null = null;
+    let finished = false;
+    const finish = (r: { ok: true; pos: Position } | { ok: false; error: LocateError }) => {
+      if (finished) return;
+      finished = true;
+      navigator.geolocation.clearWatch(id);
+      clearTimeout(timer);
+      resolve(r);
+    };
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        const pos = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+        if (best && pos.accuracy >= best.accuracy) return;
+        best = pos;
+        opts.onUpdate?.(pos);
+        if (pos.accuracy <= target) finish({ ok: true, pos });
+      },
+      (e) => {
+        if (best) return finish({ ok: true, pos: best });
+        if (e.code === e.TIMEOUT) return; // keep waiting until maxWait
+        finish({ ok: false, error: e.code === e.PERMISSION_DENIED ? "denied" : "unavailable" });
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: opts.maxWait ?? 25_000 },
+    );
+    const timer = setTimeout(() => finish(best ? { ok: true, pos: best } : { ok: false, error: "timeout" }), opts.maxWait ?? 25_000);
+    stop = () => finish(best ? { ok: true, pos: best } : { ok: false, error: "timeout" });
+  });
+  return { done, stop: () => stop() };
+}

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/Button";
 import { IconCheck, IconPin } from "@/components/ui/Icons";
 import { useToast } from "@/components/ui/Toast";
@@ -9,6 +10,11 @@ import { cn } from "@/lib/cn";
 import type { AddressView } from "@/server/accounts";
 import { deleteAddressAction, setDefaultAddressAction } from "@/server/actions/account";
 import { AddressForm } from "./AddressForm";
+
+const PinPreview = dynamic(() => import("./PinPreview").then((m) => m.PinPreview), {
+  ssr: false,
+  loading: () => <div className="h-36 animate-pulse rounded-xl border border-line bg-mint-100" />,
+});
 
 type Props = {
   addresses: AddressView[];
@@ -24,6 +30,8 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
   const { toast } = useToast();
   const [editing, setEditing] = useState<string | "new" | null>(addresses.length ? null : "new");
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** Address book page: the address whose pin map is open. */
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const outside = (pin: string) => pincodes.length > 0 && !pincodes.includes(pin);
 
@@ -83,15 +91,21 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
                 {a.address}
                 {a.landmark ? `, near ${a.landmark}` : ""} · {a.pincode}
               </span>
+              {a.lat !== null && a.lng !== null && (selectable ? selectable.selectedId === a.id : previewId === a.id) && (
+                <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                  <PinPreview lat={a.lat} lng={a.lng} />
+                  <p className="mt-1 text-[11px] text-ink-3">The rider comes to this pin. Pin in the wrong place? Tap Edit to move it.</p>
+                </div>
+              )}
               <span className="mt-1 flex flex-wrap gap-3 text-xs font-semibold" onClick={(e) => e.stopPropagation()}>
                 {a.lat === null ? (
                   <button type="button" className="text-warn hover:underline" onClick={() => setEditing(a.id)}>
                     Add map pin
                   </button>
-                ) : (
-                  <a className="text-forest-900 hover:underline" href={`https://www.google.com/maps/search/?api=1&query=${a.lat},${a.lng}`} target="_blank" rel="noreferrer">
-                    View pin
-                  </a>
+                ) : selectable ? null : (
+                  <button type="button" className="text-forest-900 hover:underline" onClick={() => setPreviewId(previewId === a.id ? null : a.id)} aria-expanded={previewId === a.id}>
+                    {previewId === a.id ? "Hide pin" : "View pin"}
+                  </button>
                 )}
                 <button type="button" className="text-forest-900 hover:underline" onClick={() => setEditing(a.id)}>
                   Edit
