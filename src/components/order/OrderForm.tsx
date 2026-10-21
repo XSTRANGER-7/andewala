@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { Choice } from "@/components/ui/Choice";
 import { Field } from "@/components/ui/Field";
 import { Note } from "@/components/ui/Note";
-import { Pill } from "@/components/ui/Pill";
 import { Stepper } from "@/components/ui/Stepper";
 import { IconPin } from "@/components/ui/Icons";
 import { ClosedButton } from "@/components/store/StoreStatus";
@@ -378,7 +377,6 @@ function SummaryLines({ trays, price, subtotal, fee, total, a }: { trays: number
         <span className="num">{inr(total)}</span>
       </div>
       <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
-        <Pill tone={a.status.tone}>{a.status.text}</Pill>
         <span>
           {a.available} tray{a.available === 1 ? "" : "s"} left · cutoff {fmtTime(a.cutoff)}
         </span>
