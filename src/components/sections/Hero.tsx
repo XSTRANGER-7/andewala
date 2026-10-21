@@ -1,6 +1,5 @@
 import { AddToCart } from "@/components/cart/AddToCart";
 import { HeroProduct } from "@/components/art/HeroProduct";
-import { Pill } from "@/components/ui/Pill";
 import { IconClock, IconLeaf, IconShield, IconTruck, IconWallet } from "@/components/ui/Icons";
 import { inr } from "@/lib/money";
 import { fmtTime } from "@/lib/time";
@@ -94,7 +93,7 @@ export function Hero({ a }: { a: Availability }) {
           {/* price and order: the whole hero on phones, a card on laptops */}
           <div className="grid gap-4 lg:max-w-md lg:rounded-2xl lg:border lg:border-line lg:bg-paper lg:p-5 lg:shadow-soft 2xl:max-w-lg 2xl:gap-5 2xl:p-7">
             <p className="eyebrow">Today&apos;s price · 30-egg tray</p>
-            <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+            <div>
               <div>
                 <div className="num font-display text-5xl font-extrabold tracking-tight text-ink 2xl:text-6xl">
                   {inr(a.price)}
@@ -102,12 +101,11 @@ export function Hero({ a }: { a: Availability }) {
                 </div>
                 <p className="mt-1 text-xs text-ink-3">Minimum 1 tray · 30 eggs</p>
               </div>
-              <Pill tone={a.status.tone}>{a.status.text}</Pill>
             </div>
             <AddToCart size="lg" className="w-full shadow-float">
               {a.status.open ? `Order now · ${inr(a.price)}` : "See delivery days"}
             </AddToCart>
-            <p className="text-center text-xs text-ink-2 lg:text-left">{a.status.detail}</p>
+            {a.status.open && <p className="text-center text-xs text-ink-2 lg:text-left">{a.status.detail}</p>}
           </div>
 
           {/* laptop: trust row */}

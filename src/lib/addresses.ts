@@ -59,6 +59,26 @@ export function useLocated(): Located | null {
   }, [raw]);
 }
 
+let pending: Promise<void> | null = null;
+
+/**
+ * Make sure we know the visitor's area: if no location has been found yet,
+ * ask the browser for it once (shared between callers, errors ignored).
+ * Used when the site opens and when Order now is tapped.
+ */
+export function ensureLocated(): Promise<void> {
+  if (typeof window === "undefined" || get()) return Promise.resolve();
+  if (!pending) {
+    pending = detectLocation()
+      .then(saveLocated)
+      .catch(() => {})
+      .finally(() => {
+        pending = null;
+      });
+  }
+  return pending;
+}
+
 /**
  * Ask the browser for the device location and turn it into an area name and
  * PIN code. Uses BigDataCloud's free client-side reverse-geocoding endpoint,

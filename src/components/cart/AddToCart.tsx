@@ -6,6 +6,7 @@ import { buttonClass, type ButtonSize, type ButtonVariant } from "@/components/u
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { addToCart } from "@/lib/cart";
+import { ensureLocated } from "@/lib/addresses";
 import { ClosedButton, useStoreStatus } from "@/components/store/StoreStatus";
 
 type Props = {
@@ -38,6 +39,7 @@ export function AddToCart({ trays, variant = "sage", size = "md", className, pla
       href="/cart"
       onClick={() => {
         const n = addToCart(trays);
+        void ensureLocated(); // fetch the location now if it wasn't found when the site opened
         toast(`${n} tray${n === 1 ? "" : "s"} in your cart`);
         onClick?.();
       }}

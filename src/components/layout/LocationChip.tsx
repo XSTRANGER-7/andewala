@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { IconCheck, IconPin } from "@/components/ui/Icons";
 import { ButtonLink, Spinner } from "@/components/ui/Button";
-import { detectLocation, saveLocated, shortLabel, useLocated } from "@/lib/addresses";
+import { detectLocation, ensureLocated, saveLocated, shortLabel, useLocated } from "@/lib/addresses";
 import { cn } from "@/lib/cn";
 import { setDefaultAddressAction } from "@/server/actions/account";
 
@@ -30,6 +30,11 @@ export function LocationChip({ zone, pincodes, addresses }: { zone: string; pinc
   const current = active ? shortLabel(active) : located ? [located.area, located.pincode].filter(Boolean).join(" · ") : null;
   const pin = active?.pincode || located?.pincode || "";
   const outside = !!pin && pincodes.length > 0 && !pincodes.includes(pin);
+
+  // Find the visitor's location as soon as the site opens, unless we already have it.
+  useEffect(() => {
+    void ensureLocated();
+  }, []);
 
   async function locate() {
     setBusy(true);
