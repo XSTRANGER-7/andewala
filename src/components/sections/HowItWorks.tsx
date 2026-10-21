@@ -25,7 +25,7 @@ export function HowItWorks({ a }: { a: Availability }) {
       Scene: SceneDoor,
       when: `By ${fmtTime(a.deadline)}`,
       title: "Fresh eggs at your door",
-      text: "The tray is handed over in your window. Pay cash or UPI, check the eggs, done.",
+      text: "The tray is handed over in your window. Check the eggs, pay cash if you didn't pay online, done.",
     },
   ];
 

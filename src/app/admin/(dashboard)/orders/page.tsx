@@ -1,3 +1,4 @@
+import { paymentLabel } from "@/lib/payment";
 import { OrderFilters } from "@/components/admin/OrderFilters";
 import { OrderRowActions } from "@/components/admin/OrderRowActions";
 import { Note } from "@/components/ui/Note";
@@ -66,7 +67,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                     <td className="px-3 py-3 text-right">
                       <span className="num">{inr(o.total)}</span>
                       <div className="text-xs text-ink-3">
-                        {o.payment === "upi" ? "UPI" : "Cash"} · {o.paymentStatus === "paid" ? "paid" : "due"}
+                        {paymentLabel(o.payment, o.paymentStatus)}
                       </div>
                     </td>
                     <td className="px-3 py-3">
@@ -101,7 +102,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                   <CustomerCell o={o} />
                 </div>
                 <div className="text-xs text-ink-3">
-                  {o.payment === "upi" ? "UPI" : "Cash"} · {o.paymentStatus === "paid" ? "paid" : "due"} · placed {fmtWhen(o.createdAt)}
+                  {paymentLabel(o.payment, o.paymentStatus)} · placed {fmtWhen(o.createdAt)}
                 </div>
                 <OrderRowActions order={o} />
               </article>

@@ -17,7 +17,7 @@ const bad = (m: string) => {
 };
 const info = (m: string) => console.log(`  · ${m}`);
 
-const TABLES = ["StoreConfig", "Order", "AuditLog", "Subscriber", "User", "Address", "Session", "OtpCode"];
+const TABLES = ["StoreConfig", "Order", "AuditLog", "Subscriber", "User", "Address", "Session", "OtpCode", "PaymentAttempt"];
 
 async function main() {
   console.log("\n1. Environment");
@@ -43,7 +43,7 @@ async function main() {
       SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'`;
     const found = new Map(rows.map((r) => [r.tablename, r.rowsecurity]));
     const missing = TABLES.filter((t) => !found.has(t));
-    missing.length ? bad(`Missing tables: ${missing.join(", ")}. Run: npm run db:deploy`) : ok("All 8 tables exist");
+    missing.length ? bad(`Missing tables: ${missing.join(", ")}. Run: npm run db:deploy`) : ok(`All ${TABLES.length} tables exist`);
     const cfg = await prisma.storeConfig.findUnique({ where: { id: 1 } }).catch(() => null);
     cfg ? ok(`Store settings found (${cfg.storeName}, ₹${cfg.price}/tray, ${cfg.stock} trays)`) : bad("No store settings yet. Run: npm run db:seed");
 
@@ -58,7 +58,7 @@ async function main() {
 
   if (url && key) {
     console.log("\n4. Public API (should be locked)");
-    for (const t of ["Order", "User", "Address"]) {
+    for (const t of ["Order", "User", "Address", "PaymentAttempt"]) {
       const res = await fetch(`${url}/rest/v1/${encodeURIComponent(t)}?select=*&limit=1`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }).catch(() => null);
       if (!res) {
         bad(`Couldn't reach ${url}`);

@@ -4,6 +4,7 @@ import type { Order, Prisma } from "@prisma/client";
 import { lockStore, prisma, TX_OPTIONS } from "./db";
 import { getSettings, updateSettings } from "./settings";
 import { logAudit } from "./audit";
+import { razorpayEnabled, refundPayment } from "./razorpay";
 import { newOrderId } from "@/lib/ids";
 import { addDays, nowIst } from "@/lib/time";
 import { computeAvailability, type BookingLite } from "@/lib/availability";
@@ -12,6 +13,7 @@ import {
   ACTIVE_STATUSES,
   ORDER_FLOW,
   type Availability,
+  type StoreSettings,
   type HistoryEntry,
   type OrderStatus,
   type OrderView,
@@ -46,7 +48,7 @@ export function toOrderView(o: Order): OrderView {
     customer: { name: o.name, phone: o.phone, address: o.address, landmark: o.landmark, pincode: o.pincode, lat: o.lat, lng: o.lng },
     notes: o.notes,
     payment: o.payment as PaymentMethod,
-    paymentStatus: o.paymentStatus === "paid" ? "paid" : "pending",
+    paymentStatus: o.paymentStatus === "paid" ? "paid" : o.paymentStatus === "refunded" ? "refunded" : "pending",
     status: o.status as OrderStatus,
     history,
     issue: o.issueText ? { text: o.issueText, at: (o.issueAt ?? o.updatedAt).toISOString(), resolved: o.issueResolved } : null,
@@ -68,20 +70,17 @@ export async function getBookings(tx: Tx = prisma, today = nowIst().date): Promi
 export const getAvailability = cache(async (): Promise<Availability> => {
   const now = nowIst();
   const [settings, bookings] = await Promise.all([getSettings(), getBookings(prisma, now.date)]);
-  return computeAvailability(settings, bookings, now);
+  const a = computeAvailability(settings, bookings, now);
+  // Online payment needs the Razorpay keys as well as the admin switch.
+  return { ...a, payments: { ...a.payments, online: a.payments.online && razorpayEnabled() } };
 });
 
 export type PlaceOrderResult = { ok: true; order: OrderView } | { ok: false; error: string; field?: string };
+type OrderInput = z.output<typeof placeOrderSchema>;
+type Checked = { ok: true; slot: { id: string; label: string }; price: number; fee: number; total: number } | { ok: false; error: string; field?: string };
 
-/** Create an order after re-checking stock, slot capacity and the delivery area inside one transaction. */
-export async function placeOrder(input: z.output<typeof placeOrderSchema>, customerId: string): Promise<PlaceOrderResult> {
-  return prisma.$transaction(async (tx) => {
-    await lockStore(tx);
-    const now = nowIst();
-    const settings = await getSettings(tx);
-    const bookings = await getBookings(tx, now.date);
-    const avail = computeAvailability(settings, bookings, now);
-
+/** Everything an order must pass: store open, area, stock, window, payment option. Shared by pricing and placing. */
+function checkOrder(settings: StoreSettings, avail: Availability, input: OrderInput, paidOnline: boolean): Checked {
     if (!avail.status.open) return { ok: false, error: avail.status.text + ". " + avail.status.detail };
     if (settings.pincodes.length && !settings.pincodes.includes(input.pincode)) {
       return { ok: false, field: "pincode", error: `Sorry, we don't deliver to ${input.pincode} yet.` };
@@ -94,10 +93,52 @@ export async function placeOrder(input: z.output<typeof placeOrderSchema>, custo
     const slot = day?.slots.find((s) => s.id === input.slotId);
     if (!day || !slot || !slot.ok) return { ok: false, field: "slot", error: "That delivery window just filled up. Pick another one." };
     if (input.payment === "cod" && !settings.codEnabled) return { ok: false, field: "payment", error: "Cash on delivery is not available right now." };
-    if (input.payment === "upi" && !settings.upiOnDelivery) return { ok: false, field: "payment", error: "UPI on delivery is not available right now." };
-
-    const ep = effectivePrice(settings, now.date);
+    // A payment already taken is honoured even if the admin has just switched online payment off.
+    if (input.payment === "online" && !paidOnline && !(settings.onlineEnabled && razorpayEnabled())) {
+      return { ok: false, field: "payment", error: "Online payment is not available right now." };
+    }
+    const ep = effectivePrice(settings, avail.today);
     const fee = deliveryFeeFor(input.trays, settings.deliveryFee, settings.freeDeliveryFrom);
+    return { ok: true, slot: { id: slot.id, label: slot.label }, price: ep.price, fee, total: orderTotal(input.trays, ep.price, fee) };
+}
+
+/** Price an order without placing it (used before taking an online payment). */
+export async function quoteOrder(input: OrderInput): Promise<Checked> {
+  const now = nowIst();
+  const [settings, bookings] = await Promise.all([getSettings(), getBookings(prisma, now.date)]);
+  return checkOrder(settings, computeAvailability(settings, bookings, now), input, false);
+}
+
+/** Online payment details to attach when placing an order that has been paid. */
+export type PaidWith = { attemptId: string; razorpayOrderId: string; razorpayPaymentId: string; price: number; fee: number };
+
+/**
+ * Create an order after re-checking stock, slot capacity and the delivery area
+ * inside one transaction. With `paid`, the order is for a payment attempt:
+ * if that attempt already produced an order (the browser and the webhook both
+ * finishing it), the existing order is returned instead of a second one.
+ */
+export async function placeOrder(input: OrderInput, customerId: string, paid?: PaidWith): Promise<PlaceOrderResult> {
+  return prisma.$transaction(async (tx) => {
+    await lockStore(tx);
+    if (paid) {
+      const att = await tx.paymentAttempt.findUnique({ where: { id: paid.attemptId } });
+      if (att?.orderId) {
+        const existing = await tx.order.findUnique({ where: { id: att.orderId } });
+        if (existing) return { ok: true, order: toOrderView(existing) };
+      }
+    }
+    const now = nowIst();
+    const settings = await getSettings(tx);
+    const bookings = await getBookings(tx, now.date);
+    const avail = computeAvailability(settings, bookings, now);
+    const checked = checkOrder(settings, avail, input, !!paid);
+    if (!checked.ok) return checked;
+    const { slot } = checked;
+    // A paid order keeps the price the customer paid, even if the price changed a moment later.
+    const price = paid ? paid.price : checked.price;
+    const fee = paid ? paid.fee : checked.fee;
+    const total = orderTotal(input.trays, price, fee);
     const at = new Date().toISOString();
     const history: HistoryEntry[] = [{ status: "placed", at, by: "customer" }];
 
@@ -114,9 +155,9 @@ export async function placeOrder(input: z.output<typeof placeOrderSchema>, custo
           slotId: slot.id,
           slotLabel: slot.label,
           trays: input.trays,
-          unitPrice: ep.price,
+          unitPrice: price,
           deliveryFee: fee,
-          total: orderTotal(input.trays, ep.price, fee),
+          total,
           productCost: productCost(settings.costs),
           deliveryCost: settings.costs.delivery,
           name: input.name,
@@ -128,9 +169,13 @@ export async function placeOrder(input: z.output<typeof placeOrderSchema>, custo
           lng: input.lng,
           notes: input.notes,
           payment: input.payment,
+          ...(paid ? { paymentStatus: "paid", razorpayOrderId: paid.razorpayOrderId, razorpayPaymentId: paid.razorpayPaymentId } : {}),
           historyJson: JSON.stringify(history),
         },
       });
+      if (paid) {
+        await tx.paymentAttempt.update({ where: { id: paid.attemptId }, data: { status: "paid", orderId: row.id, razorpayPaymentId: paid.razorpayPaymentId, error: null } });
+      }
       return { ok: true, order: toOrderView(row) };
     }
     return { ok: false, error: "Could not create an order id. Please try again." };
@@ -214,8 +259,25 @@ function ownedBy(o: Order, proof: OwnerProof): boolean {
   return false;
 }
 
-/** Cancel an order. With `proof` it is a customer cancelling (only while "placed"); without, an admin. */
+/** Cancel an order. With `proof` it is a customer cancelling (only while "placed"); without, an admin. Paid online orders are refunded. */
 export async function cancelOrder(id: string, by: string, proof?: OwnerProof): Promise<OrderView> {
+  const cancelled = await cancelInDb(id, by, proof);
+  if (cancelled.payment !== "online" || cancelled.paymentStatus !== "paid") return cancelled;
+  const o = await prisma.order.findUniqueOrThrow({ where: { id } });
+  if (!o.razorpayPaymentId) return cancelled;
+  try {
+    await refundPayment(o.razorpayPaymentId, o.total * 100, { order: id, reason: "cancelled" });
+    const row = await prisma.order.update({ where: { id }, data: { paymentStatus: "refunded" } });
+    await logAudit(by, `Refunded ${id}`, `₹${o.total} back to the customer (order cancelled)`);
+    return toOrderView(row);
+  } catch (e) {
+    console.error("refund failed", id, e);
+    await logAudit("system", `Refund failed for ${id}`, `₹${o.total}. Refund it from the Razorpay dashboard. ${e instanceof Error ? e.message : ""}`);
+    return cancelled;
+  }
+}
+
+async function cancelInDb(id: string, by: string, proof?: OwnerProof): Promise<OrderView> {
   return prisma.$transaction(async (tx) => {
     await lockStore(tx);
     const o = await tx.order.findUniqueOrThrow({ where: { id } });

@@ -48,7 +48,7 @@ export function toSettings(row: StoreConfig): StoreSettings {
     maxTrays: row.maxTrays,
     pincodes: parseJson<string[]>(row.pincodesJson, []),
     codEnabled: row.codEnabled,
-    upiOnDelivery: row.upiOnDelivery,
+    onlineEnabled: row.onlineEnabled,
   };
 }
 

@@ -139,7 +139,7 @@ export async function saveSettingsAction(input: SettingsInput): Promise<AdminRes
       maxTrays: s.maxTrays,
       targetContribution: s.targetContribution,
       codEnabled: s.codEnabled,
-      upiOnDelivery: s.upiOnDelivery,
+      onlineEnabled: s.onlineEnabled,
     });
     await logAudit(admin.name, "Updated delivery settings", `cutoff ${fmtTime(s.cutoff)}, ${s.slots.length} windows`);
     refreshAll();

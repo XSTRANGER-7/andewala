@@ -16,7 +16,7 @@ export function Hero({ a }: { a: Availability }) {
   const deliveryLine = a.deliveryFee === 0 ? "Free home delivery" : freeFrom ? `Free delivery on ${freeFrom}+ trays` : "Doorstep delivery";
   const trust = [
     { Icon: IconTruck, text: deliveryLine },
-    { Icon: IconWallet, text: "Pay cash or UPI at the door" },
+    { Icon: IconWallet, text: "Pay online or cash on delivery" },
     { Icon: IconShield, text: "Broken eggs replaced" },
   ];
 

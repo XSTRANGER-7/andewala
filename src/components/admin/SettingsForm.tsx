@@ -31,7 +31,7 @@ export function SettingsForm({ settings }: Props) {
   const [maxTrays, setMaxTrays] = useState(String(settings.maxTrays));
   const [target, setTarget] = useState(String(settings.targetContribution));
   const [cod, setCod] = useState(settings.codEnabled);
-  const [upi, setUpi] = useState(settings.upiOnDelivery);
+  const [online, setOnline] = useState(settings.onlineEnabled);
 
   function updateSlot(i: number, patch: Partial<DeliverySlot>) {
     setSlots((s) => s.map((x, k) => (k === i ? { ...x, ...patch } : x)));
@@ -57,7 +57,7 @@ export function SettingsForm({ settings }: Props) {
         maxTrays: Number(maxTrays),
         targetContribution: Number(target),
         codEnabled: cod,
-        upiOnDelivery: upi,
+        onlineEnabled: online,
       });
       if (res.ok) {
         toast(res.message);
@@ -163,7 +163,7 @@ export function SettingsForm({ settings }: Props) {
           <input type="checkbox" checked={cod} onChange={(e) => setCod(e.target.checked)} className="h-4 w-4 accent-forest-900" /> Accept cash on delivery
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={upi} onChange={(e) => setUpi(e.target.checked)} className="h-4 w-4 accent-forest-900" /> Accept UPI on delivery
+          <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} className="h-4 w-4 accent-forest-900" /> Accept online payment (UPI, cards, netbanking via Razorpay)
         </label>
         {errors.codEnabled && <p className="text-sm text-bad">{errors.codEnabled}</p>}
       </section>

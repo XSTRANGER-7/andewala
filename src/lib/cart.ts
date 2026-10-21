@@ -42,7 +42,7 @@ export function parseDraft(raw: string | null): CartDraft | null {
       trays: Math.floor(d.trays),
       date: typeof d.date === "string" ? d.date : null,
       slotId: typeof d.slotId === "string" ? d.slotId : null,
-      payment: d.payment === "upi" ? "upi" : "cod",
+      payment: d.payment === "online" ? "online" : "cod",
       notes: typeof d.notes === "string" ? d.notes : "",
       updatedAt: typeof d.updatedAt === "string" ? d.updatedAt : new Date().toISOString(),
     };

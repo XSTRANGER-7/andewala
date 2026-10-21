@@ -30,7 +30,7 @@ export default async function CartPage({ searchParams }: Props) {
           <h1 className="font-display text-2xl font-bold sm:text-3xl">Your cart</h1>
           <p className="text-sm text-ink-2">
             Same-day orders close at {fmtTime(availability.cutoff)}. Delivered by {fmtTime(availability.deadline)}.
-            {availability.deliveryFee === 0 ? " Free home delivery." : ""} Pay cash or UPI at the door.
+            {availability.deliveryFee === 0 ? " Free home delivery." : ""} Pay online (UPI, cards) or cash on delivery.
           </p>
         </header>
 

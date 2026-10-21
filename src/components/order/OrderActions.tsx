@@ -58,7 +58,10 @@ export function OrderActions({ order, phone }: { order: OrderView; phone?: strin
       )}
 
       <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancel this order?">
-        <p className="text-sm text-ink-2">The trays go back into stock and your delivery spot is released. This can&apos;t be undone.</p>
+        <p className="text-sm text-ink-2">
+          The trays go back into stock and your delivery spot is released. This can&apos;t be undone.
+          {order.payment === "online" && order.paymentStatus === "paid" && " Your online payment is refunded to the same UPI, card or bank account, usually within 5–7 working days."}
+        </p>
         {error && <p className="text-sm text-bad">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setCancelOpen(false)}>

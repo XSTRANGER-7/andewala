@@ -121,7 +121,7 @@ export function computeAvailability(s: StoreSettings, bookings: BookingLite[], n
     areaName: s.areaName,
     cutoff: s.cutoff,
     deadline: s.deadline,
-    payments: { cod: s.codEnabled, upi: s.upiOnDelivery },
+    payments: { cod: s.codEnabled, online: s.onlineEnabled },
     storeName: s.storeName,
   };
 }

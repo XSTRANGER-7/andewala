@@ -14,7 +14,7 @@ export const placeOrderSchema = z.object({
   trays: z.number().int().min(1, "Order at least one tray.").max(50),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a delivery day."),
   slotId: z.string().min(1, "Pick a delivery window."),
-  payment: z.enum(["cod", "upi"]),
+  payment: z.enum(["cod", "online"]),
   name: z.string().trim().min(2, "Enter your name.").max(80),
   phone: phoneSchema,
   address: z.string().trim().min(8, "Add your house number, street and area.").max(300),
@@ -72,9 +72,9 @@ export const settingsSchema = z
     maxTrays: z.number().int().min(1).max(100),
     targetContribution: z.number().min(0).max(100000),
     codEnabled: z.boolean(),
-    upiOnDelivery: z.boolean(),
+    onlineEnabled: z.boolean(),
   })
-  .refine((s) => s.codEnabled || s.upiOnDelivery, { message: "Turn on at least one payment option.", path: ["codEnabled"] })
+  .refine((s) => s.codEnabled || s.onlineEnabled, { message: "Turn on at least one payment option.", path: ["codEnabled"] })
   .refine((s) => s.openTime < s.cutoff, { message: "The store must open before it closes.", path: ["openTime"] });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 
@@ -151,7 +151,7 @@ export const checkoutSchema = z.object({
   trays: z.number().int().min(1, "Order at least one tray.").max(50),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a delivery day."),
   slotId: z.string().min(1, "Pick a delivery window."),
-  payment: z.enum(["cod", "upi"]),
+  payment: z.enum(["cod", "online"]),
   addressId: z.string().min(1, "Choose a delivery address."),
   notes: z.string().trim().max(200).default(""),
 });

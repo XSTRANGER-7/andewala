@@ -41,7 +41,8 @@ export type StoreSettings = {
   maxTrays: number;
   pincodes: string[];
   codEnabled: boolean;
-  upiOnDelivery: boolean;
+  /** Accept online payment (Razorpay). */
+  onlineEnabled: boolean;
 };
 
 export const ORDER_FLOW = ["placed", "confirmed", "packed", "out", "delivered"] as const;
@@ -68,7 +69,9 @@ export const STATUS_TONE: Record<OrderStatus, StatusTone> = {
   cancelled: "bad",
 };
 
-export type PaymentMethod = "cod" | "upi";
+/** "online" is Razorpay (UPI, cards, netbanking); "upi" is the old UPI-on-delivery, kept for past orders. */
+export type PaymentMethod = "cod" | "online" | "upi";
+export type PaymentStatus = "pending" | "paid" | "refunded";
 
 export type HistoryEntry = { status: OrderStatus; at: string; by: string };
 
@@ -90,7 +93,7 @@ export type OrderView = {
   customer: { name: string; phone: string; address: string; landmark: string; pincode: string; lat: number | null; lng: number | null };
   notes: string;
   payment: PaymentMethod;
-  paymentStatus: "pending" | "paid";
+  paymentStatus: PaymentStatus;
   status: OrderStatus;
   history: HistoryEntry[];
   issue: { text: string; at: string; resolved: boolean } | null;
@@ -135,6 +138,7 @@ export type Availability = {
   areaName: string;
   cutoff: string;
   deadline: string;
-  payments: { cod: boolean; upi: boolean };
+  /** Payment options open right now. `online` also needs Razorpay keys on the server. */
+  payments: { cod: boolean; online: boolean };
   storeName: string;
 };

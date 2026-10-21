@@ -6,7 +6,7 @@ export function PromoBar({ s }: { s: StoreSettings }) {
   const items = [
     s.deliveryFee === 0 ? "Free home delivery on every order" : s.freeDeliveryFrom > 0 ? `Free delivery on ${s.freeDeliveryFrom}+ trays` : null,
     `Order before ${fmtTime(s.cutoff)} for same-day delivery`,
-    "Pay cash or UPI at your door",
+    "Pay online or cash on delivery",
     "Farm-fresh, collected this morning",
     "Minimum order 1 tray · 30 eggs",
   ].filter(Boolean) as string[];

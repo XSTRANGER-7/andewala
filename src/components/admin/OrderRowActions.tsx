@@ -32,7 +32,7 @@ export function OrderRowActions({ order }: { order: OrderView }) {
           Mark {STATUS_LABEL[next].toLowerCase()}
         </Button>
       )}
-      {order.paymentStatus !== "paid" && order.status !== "cancelled" && (
+      {order.paymentStatus === "pending" && order.status !== "cancelled" && (
         <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => markPaidAction(order.id))}>
           Mark paid
         </Button>

@@ -14,8 +14,12 @@ import { useToast } from "@/components/ui/Toast";
 import { inr } from "@/lib/money";
 import { deliveryFeeFor } from "@/lib/pricing";
 import { fmtTime } from "@/lib/time";
-import type { Availability, PaymentMethod } from "@/lib/types";
-import { placeOrderAction } from "@/server/actions/order";
+import type { Availability } from "@/lib/types";
+
+/** The ways to pay at checkout. */
+type Pay = "cod" | "online";
+import { confirmPaymentAction, paymentFailedAction, placeOrderAction, startPaymentAction } from "@/server/actions/order";
+import { payWithRazorpay } from "@/lib/razorpay-checkout";
 import { clearDraft, readDraft, setCartTrays, writeDraft } from "@/lib/cart";
 import { AddressBook } from "@/components/account/AddressBook";
 import type { AddressView } from "@/server/accounts";
@@ -45,12 +49,12 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   const { toast } = useToast();
   // The saved cart and address details exist only in the browser; render them after hydration to keep server and client markup identical.
   const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  const defaultPayment: PaymentMethod = a.payments.cod ? "cod" : "upi";
+  const defaultPayment: Pay = a.payments.cod ? "cod" : "online";
   const [draftState] = useState(() => readDraft());
   const draft = hydrated ? draftState : null;
   const [dateState, setDate] = useState<string | null>(() => draftState?.date ?? null);
   const [slotState, setSlotId] = useState<string | null>(() => draftState?.slotId ?? null);
-  const [paymentState, setPayment] = useState<PaymentMethod>(() => draftState?.payment ?? defaultPayment);
+  const [paymentState, setPayment] = useState<Pay>(() => (draftState?.payment === "online" ? "online" : draftState?.payment === "cod" ? "cod" : defaultPayment));
   // Delivery address: one of the customer's saved addresses, the default one to start with.
   const defaultAddressId = account.addresses.find((x) => x.isDefault)?.id ?? account.addresses[0]?.id ?? null;
   const [addressChoice, setAddressId] = useState<string | null>(null);
@@ -58,6 +62,10 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   const [notesState, setNotes] = useState(() => draftState?.notes ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  /** Online payment in progress: "verifying" covers the moment between paying and the order being placed. */
+  const [payStage, setPayStage] = useState<"idle" | "starting" | "paying" | "verifying">("idle");
+  /** Shown when an online payment didn't complete, so no order was placed. */
+  const [payFail, setPayFail] = useState<{ title: string; message: string; refunded?: boolean } | null>(null);
   const [locating, setLocating] = useState(false);
   /** Set when the customer seems to be somewhere else than the delivery pin; asks them to confirm. */
   const [farAway, setFarAway] = useState<{ distance: number; label: string } | null>(null);
@@ -65,7 +73,9 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   // Before hydration, show the server defaults so the first paint matches; the draft takes over right after.
   const dateWanted = hydrated ? dateState : null;
   const slotWanted = hydrated ? slotState : null;
-  const payment = hydrated ? paymentState : defaultPayment;
+  // Fall back if the saved choice isn't offered any more (for example online payment switched off).
+  const wanted = hydrated ? paymentState : defaultPayment;
+  const payment: Pay = a.payments[wanted] ? wanted : a.payments.cod ? "cod" : "online";
   const notes = hydrated ? notesState : "";
 
   // Keep the live snapshot fresh: stock and windows change as other people order.
@@ -80,7 +90,7 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   const slotId = slot?.id ?? null;
 
   /** Save the in-progress order to the cart after any change the customer makes. */
-  function persist(patch: Partial<{ trays: number; date: string | null; slotId: string | null; payment: PaymentMethod; notes: string }>) {
+  function persist(patch: Partial<{ trays: number; date: string | null; slotId: string | null; payment: Pay; notes: string }>) {
     writeDraft({ trays, date, slotId, payment, notes, ...patch });
   }
   void draft;
@@ -122,8 +132,10 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   async function place() {
     if (!date || !slotId || !addressId) return;
     setFarAway(null);
+    setPayFail(null);
     setSubmitting(true);
     setErrors({});
+    if (payment === "online") return payOnline();
     const res = await placeOrderAction({ trays, date, slotId, payment, addressId, notes });
     if (res.ok) {
       clearDraft();
@@ -131,12 +143,76 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
       return;
     }
     setSubmitting(false);
+    showErrors(res.errors);
+  }
+
+  /**
+   * Online: the server prices the order and opens a Razorpay order; the
+   * customer pays in Razorpay Checkout; the server verifies the payment and
+   * only then places the order. Any failure means no order.
+   */
+  async function payOnline() {
+    if (!date || !slotId || !addressId) return;
+    setPayStage("starting");
+    const start = await startPaymentAction({ trays, date, slotId, payment: "online", addressId, notes });
+    if (!start.ok) {
+      setPayStage("idle");
+      setSubmitting(false);
+      showErrors(start.errors);
+      return;
+    }
+    setPayStage("paying");
+    const outcome = await payWithRazorpay({
+      keyId: start.data.keyId,
+      razorpayOrderId: start.data.razorpayOrderId,
+      amount: start.data.amount,
+      prefill: start.data.prefill,
+      description: `${trays} egg tray${trays > 1 ? "s" : ""} · ${trays * 30} eggs`,
+    }).catch((): { status: "failed"; reason: string } => ({ status: "failed", reason: "The payment page didn't load. Check your connection and try again." }));
+
+    if (outcome.status !== "paid") {
+      void paymentFailedAction(start.data.razorpayOrderId, outcome.reason);
+      setPayStage("idle");
+      setSubmitting(false);
+      setPayFail({ title: "Order failed: payment didn't go through", message: `${outcome.reason} You haven't been charged, and no order was placed.` });
+      return;
+    }
+
+    setPayStage("verifying");
+    const res = await confirmPaymentAction({
+      razorpayOrderId: outcome.razorpayOrderId,
+      razorpayPaymentId: outcome.razorpayPaymentId,
+      razorpaySignature: outcome.razorpaySignature,
+    }).catch(() => null);
+    if (res?.ok) {
+      clearDraft();
+      router.push(`/order/${res.data.id}?new=1&paid=1`);
+      return;
+    }
+    setPayStage("idle");
+    setSubmitting(false);
+    if (res?.errors.auth) {
+      toast(res.errors.auth, "error");
+      router.push("/login?next=/cart");
+      return;
+    }
+    setPayFail({
+      title: res?.refunded ? "Order failed: payment refunded" : "Order failed",
+      message: res?.errors.form ?? "We couldn't confirm your payment. If money was taken, the order will appear in My orders within a few minutes, or it will be refunded.",
+      refunded: res?.refunded,
+    });
+    router.refresh();
+  }
+
+  function showErrors(errs: Record<string, string>) {
+    const res = { errors: errs };
     if (res.errors.auth) {
       toast(res.errors.auth, "error");
       router.push("/login?next=/cart");
       return;
     }
     setErrors(res.errors);
+    if (res.errors.payment) toast(res.errors.payment, "error");
     const first = Object.keys(res.errors)[0];
     const el = formRef.current?.querySelector<HTMLElement>(`[name="${first}"]`);
     if (el) el.focus();
@@ -224,17 +300,17 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
                 sub="Pay the rider"
               />
             )}
-            {a.payments.upi && (
+            {a.payments.online && (
               <Choice
                 name="payment"
-                value="upi"
-                checked={payment === "upi"}
+                value="online"
+                checked={payment === "online"}
                 onChange={() => {
-                  setPayment("upi");
-                  persist({ payment: "upi" });
+                  setPayment("online");
+                  persist({ payment: "online" });
                 }}
-                title="UPI on delivery"
-                sub="Scan the rider's QR"
+                title="Pay online"
+                sub="UPI, cards, netbanking · secured by Razorpay"
               />
             )}
           </div>
@@ -252,7 +328,7 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
           <ClosedButton board={a.status.board} detail={a.status.detail} size="lg" />
         ) : (
           <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating} className="w-full">
-            {locating ? "Checking your location…" : `Place order · ${inr(total)}`}
+            {locating ? "Checking your location…" : payStage === "starting" ? "Opening payment…" : payStage === "paying" ? "Waiting for payment…" : payment === "online" ? `Pay ${inr(total)} & place order` : `Place order · ${inr(total)}`}
           </Button>
         )}
         <p className="text-xs text-ink-3">Your price is locked when you order. Cancel free of charge until we pack it.</p>
@@ -273,11 +349,39 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
             <ClosedButton board={a.status.board} detail={a.status.detail} size="md" className="w-44 shrink-0 min-w-0" />
           ) : (
             <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating}>
-              {locating ? "Checking…" : "Place order"}
+              {locating ? "Checking…" : payStage !== "idle" ? "Paying…" : payment === "online" ? `Pay ${inr(total)}` : "Place order"}
             </Button>
           )}
         </div>
       </div>
+
+      {payStage === "verifying" && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-paper/90 p-6 text-center backdrop-blur-sm" role="status" aria-live="assertive">
+          <div className="grid justify-items-center gap-3">
+            <span className="h-10 w-10 animate-spin rounded-full border-4 border-mint-100 border-t-forest-900" aria-hidden="true" />
+            <p className="font-display text-xl font-bold">Payment received</p>
+            <p className="max-w-xs text-sm text-ink-2">Confirming it and placing your order. Please don&apos;t close this page.</p>
+          </div>
+        </div>
+      )}
+
+      {payFail && (
+        <PaymentFailedDialog
+          title={payFail.title}
+          message={payFail.message}
+          canPayCash={a.payments.cod && !payFail.refunded}
+          onRetry={() => {
+            setPayFail(null);
+            void place();
+          }}
+          onCash={() => {
+            setPayFail(null);
+            setPayment("cod");
+            persist({ payment: "cod" });
+          }}
+          onClose={() => setPayFail(null)}
+        />
+      )}
 
       {farAway && (
         <FarAwayDialog
@@ -291,6 +395,63 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
         />
       )}
     </form>
+  );
+}
+
+/** Online payment didn't complete, so the order wasn't placed. */
+function PaymentFailedDialog({
+  title,
+  message,
+  canPayCash,
+  onRetry,
+  onCash,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  canPayCash: boolean;
+  onRetry: () => void;
+  onCash: () => void;
+  onClose: () => void;
+}) {
+  const retryRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    retryRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-3 sm:place-items-center" onClick={onClose}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="payfail-title" aria-describedby="payfail-text" className="w-full max-w-md rounded-2xl bg-paper p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-bad/10 text-bad" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5.5M12 16.5v.01" />
+          </svg>
+        </div>
+        <h2 id="payfail-title" className="font-display text-xl font-bold">
+          {title}
+        </h2>
+        <p id="payfail-text" className="mt-2 text-sm text-ink-2">
+          {message}
+        </p>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          {canPayCash ? (
+            <Button type="button" variant="outline" onClick={onCash}>
+              Pay cash on delivery
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          )}
+          <Button ref={retryRef} type="button" variant="sage" onClick={onRetry}>
+            Try paying again
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

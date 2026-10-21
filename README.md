@@ -120,6 +120,24 @@ The app uses Supabase in two ways. Prisma stays as the code layer either way.
 
 **Concurrency.** Placing, cancelling and delivering an order take a Postgres advisory lock (`lockStore` in `src/server/db.ts`), so two customers can't buy the last tray at the same moment.
 
+## Payments (Razorpay)
+
+Checkout offers **Cash on delivery** and **Pay online** (UPI, cards, netbanking, wallets through Razorpay).
+
+How an online order is placed:
+1. The server re-checks the order (store open, stock, area, map pin) and prices it, then creates a Razorpay order for exactly that amount. The browser never sets the price.
+2. The customer pays in Razorpay Checkout.
+3. The server verifies Razorpay's signature, fetches the payment to confirm the order id, amount and status (capturing it if it is only authorized), and only then places the order, marked paid.
+4. Closed window or declined payment: no order, and the customer sees "Order failed: payment didn't go through" with Try again / Pay cash on delivery.
+5. Paid, but the order can no longer be placed (for example stock ran out that second): the payment is refunded automatically and the customer is told.
+6. Customer paid and closed the app before returning: the webhook places the order. The browser and webhook can both finish the same payment safely; only one order is created.
+7. Cancelling a paid order refunds it.
+
+Setup:
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`: Razorpay Dashboard > Account & Settings > API keys (test keys first).
+- Webhook: Dashboard > Webhooks > Add new: URL `https://<your-site>/api/razorpay/webhook`, events `payment.authorized` and `payment.captured`, and a secret you also put in `RAZORPAY_WEBHOOK_SECRET`.
+- Add all three on Vercel (Production and Preview) and redeploy. "Pay online" shows only when the keys are set and the admin switch "Accept online payment" is on.
+
 ## Deploying
 
 1. Set `DATABASE_URL`, `ADMIN_PASSWORD`, `AUTH_SECRET` (32+ random characters) and `NEXT_PUBLIC_SITE_URL`.

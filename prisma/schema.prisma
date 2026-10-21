@@ -35,6 +35,8 @@ model StoreConfig {
   openTime           String    @default("09:00")
   /// "auto" follows openTime..cutoff; "open" / "closed" are the admin's manual override.
   storeMode          String    @default("auto")
+  /// Accept online payment through Razorpay (UPI, cards, netbanking).
+  onlineEnabled      Boolean   @default(true)
   /// Admin switch: show Out of stock and stop orders, whatever the tray count.
   outOfStock         Boolean   @default(false)
   cutoff             String    @default("17:00")
@@ -53,36 +55,40 @@ model StoreConfig {
 }
 
 model Order {
-  id            String    @id
-  customerId    String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  date          String
-  slotId        String
-  slotLabel     String
-  trays         Int
-  unitPrice     Int
-  deliveryFee   Int
-  total         Int
-  productCost   Float
-  deliveryCost  Float
-  name          String
-  phone         String
-  address       String
-  landmark      String    @default("")
-  pincode       String
+  id                String    @id
+  customerId        String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  date              String
+  slotId            String
+  slotLabel         String
+  trays             Int
+  unitPrice         Int
+  deliveryFee       Int
+  total             Int
+  productCost       Float
+  deliveryCost      Float
+  name              String
+  phone             String
+  address           String
+  landmark          String    @default("")
+  pincode           String
   /// Delivery pin copied from the address when the order was placed.
-  lat           Float?
-  lng           Float?
-  notes         String    @default("")
-  payment       String
-  paymentStatus String    @default("pending")
-  status        String    @default("placed")
+  lat               Float?
+  lng               Float?
+  notes             String    @default("")
+  /// "cod" (cash on delivery), "online" (Razorpay), or "upi" (legacy: UPI on delivery)
+  payment           String
+  /// "pending", "paid" or "refunded"
+  paymentStatus     String    @default("pending")
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  status            String    @default("placed")
   /// JSON array of { status, at, by }
-  historyJson   String    @default("[]")
-  issueText     String?
-  issueAt       DateTime?
-  issueResolved Boolean   @default(false)
+  historyJson       String    @default("[]")
+  issueText         String?
+  issueAt           DateTime?
+  issueResolved     Boolean   @default(false)
 
   @@index([customerId])
   @@index([date, slotId])
@@ -169,4 +175,25 @@ model OtpCode {
 
   @@index([target, createdAt])
   @@index([ip, createdAt])
+}
+
+/// One try at paying online. Holds the checkout exactly as it was priced, so
+/// the order placed after payment can't be changed by the browser.
+model PaymentAttempt {
+  id                String   @id @default(cuid())
+  userId            String
+  /// The validated order input (trays, day, window, address, pin, notes) as JSON.
+  payloadJson       String
+  /// Amount in paise, as sent to Razorpay.
+  amount            Int
+  razorpayOrderId   String?  @unique
+  razorpayPaymentId String?
+  /// "created", "paid", "failed" or "refunded"
+  status            String   @default("created")
+  orderId           String?
+  error             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
 }

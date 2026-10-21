@@ -10,6 +10,7 @@ import { AddToCart } from "@/components/cart/AddToCart";
 import { Note } from "@/components/ui/Note";
 import { StatusPill } from "@/components/ui/Pill";
 import { inr } from "@/lib/money";
+import { paymentLabel } from "@/lib/payment";
 import { fmtDay, fmtWhen, nowIst } from "@/lib/time";
 import { getOrder } from "@/server/orders";
 import { getCustomerId } from "@/server/session";
@@ -61,8 +62,10 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
             <h1 className="font-display text-3xl font-bold">Order placed</h1>
             <span className="num rounded-lg bg-yolk-soft px-4 py-1.5 text-lg font-bold text-yolk-ink">{order.id}</span>
             <p className="max-w-md text-sm text-ink-2">
-              {order.trays} tray{order.trays > 1 ? "s" : ""} ({order.trays * 30} eggs) for {order.date === today ? "today" : fmtDay(order.date)}, {order.slotLabel}. Pay {inr(order.total)} by{" "}
-              {order.payment === "upi" ? "UPI" : "cash"} on delivery.
+              {order.trays} tray{order.trays > 1 ? "s" : ""} ({order.trays * 30} eggs) for {order.date === today ? "today" : fmtDay(order.date)}, by {order.slotLabel.split(/[–-]/).pop()?.trim()}.{" "}
+              {order.payment === "online" && order.paymentStatus === "paid"
+                ? `Payment of ${inr(order.total)} received. Nothing to pay at the door.`
+                : `Pay ${inr(order.total)} by ${order.payment === "upi" ? "UPI" : "cash"} on delivery.`}
             </p>
             <p className="text-xs text-ink-3">Keep this order ID. You can always find it under My orders.</p>
           </div>
@@ -89,7 +92,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
             <Row k="Placed" v={fmtWhen(order.createdAt)} />
             <Row k="Trays" v={`${order.trays} × ${inr(order.unitPrice)}`} />
             <Row k="Delivery fee" v={order.deliveryFee ? inr(order.deliveryFee) : "Free"} />
-            <Row k="Payment" v={`${order.payment === "upi" ? "UPI" : "Cash"} on delivery · ${order.paymentStatus === "paid" ? "paid" : "due"}`} />
+            <Row k="Payment" v={paymentLabel(order.payment, order.paymentStatus)} />
             <Row k="Deliver to" v={`${order.customer.name} · ${order.customer.phone}`} />
             <div className="sm:col-span-2">
               <dt className="text-ink-3">Address</dt>

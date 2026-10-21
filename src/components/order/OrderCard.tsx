@@ -4,6 +4,7 @@ import { inr } from "@/lib/money";
 import { fmtDay } from "@/lib/time";
 import type { OrderView } from "@/lib/types";
 import { OrderTimeline } from "./OrderTimeline";
+import { paymentLabel } from "@/lib/payment";
 
 export function OrderCard({ order, today }: { order: OrderView; today: string }) {
   return (
@@ -18,8 +19,7 @@ export function OrderCard({ order, today }: { order: OrderView; today: string })
         <b className="num">{inr(order.total)}</b>
       </div>
       <p className="text-sm text-ink-2">
-        {order.trays} tray{order.trays > 1 ? "s" : ""} · {order.date === today ? "Today" : fmtDay(order.date)}, {order.slotLabel} · {order.payment === "upi" ? "UPI" : "Cash"} on delivery
-        {order.paymentStatus === "paid" ? " · paid" : ""}
+        {order.trays} tray{order.trays > 1 ? "s" : ""} · {order.date === today ? "Today" : fmtDay(order.date)}, {order.slotLabel} · {paymentLabel(order.payment, order.paymentStatus)}
       </p>
       <OrderTimeline order={order} />
       <div>
