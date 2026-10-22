@@ -22,6 +22,8 @@ import type { z } from "zod";
 import * as zones from "@/server/zones";
 import type { Zone } from "@/lib/zones";
 import { zoneSchema, type ZoneFormInput } from "@/lib/validation";
+import * as riders from "@/server/riders";
+import { riderSchema, type RiderInput } from "@/lib/validation";
 
 export type AdminResult<T = undefined> = { ok: true; message: string; data?: T } | { ok: false; errors: Record<string, string> };
 
@@ -258,6 +260,37 @@ export async function deleteZoneAction(id: string): Promise<AdminResult> {
     await logAudit(admin.name, `Removed delivery area "${z.name}"`);
     refreshAll();
     return { ok: true, message: "Area removed" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Add or update a delivery partner. Logging in with this mobile number opens the rider dashboard. */
+export async function saveRiderAction(input: RiderInput): Promise<AdminResult> {
+  const parsed = riderSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
+  try {
+    const admin = await requireAdmin();
+    const r = await riders.saveRider(parsed.data);
+    await logAudit(admin.name, `${parsed.data.id ? "Updated" : "Added"} rider ${r.name}`, `+91 ${r.phone}${r.active ? "" : " (off)"}`);
+    refreshAll();
+    revalidatePath("/admin/riders");
+    return { ok: true, message: parsed.data.id ? "Rider saved" : "Rider added" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteRiderAction(id: string): Promise<AdminResult> {
+  try {
+    const admin = await requireAdmin();
+    const r = (await riders.listRiders()).find((x) => x.id === id);
+    if (!r) return { ok: false, errors: { form: "That rider no longer exists." } };
+    await riders.deleteRider(id);
+    await logAudit(admin.name, `Removed rider ${r.name}`);
+    refreshAll();
+    revalidatePath("/admin/riders");
+    return { ok: true, message: "Rider removed" };
   } catch (e) {
     return fail(e);
   }

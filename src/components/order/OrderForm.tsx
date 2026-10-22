@@ -10,6 +10,7 @@ import { Note } from "@/components/ui/Note";
 import { Stepper } from "@/components/ui/Stepper";
 import { IconPin } from "@/components/ui/Icons";
 import { ClosedButton } from "@/components/store/StoreStatus";
+import { coverageAt } from "@/lib/zones";
 import { useToast } from "@/components/ui/Toast";
 import { inr } from "@/lib/money";
 import { deliveryFeeFor } from "@/lib/pricing";
@@ -98,7 +99,12 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
   const fee = deliveryFeeFor(trays, a.deliveryFee, a.freeDeliveryFrom);
   const subtotal = trays * a.price;
   const total = subtotal + fee;
-  const canSubmit = a.status.open && !!date && !!slot?.ok && a.available > 0 && !!addressId && !submitting && !locating;
+  // The chosen address is outside every delivery area: no ordering, show a sign instead.
+  const chosen = account.addresses.find((x) => x.id === addressId);
+  const blocked = !!chosen && coverageAt({ zones: a.zones, pincodes: a.pincodes }, chosen).status === "outside";
+  const sign = a.status.board ?? (blocked ? { title: "Not deliverable", sub: "Choose another address" } : null);
+  const signDetail = a.status.board ? a.status.detail : "This address is outside our delivery area. Pick or add another address.";
+  const canSubmit = !blocked && a.status.open && !!date && !!slot?.ok && a.available > 0 && !!addressId && !submitting && !locating;
 
   function showAddressError(message: string) {
     setErrors({ addressId: message });
@@ -324,8 +330,8 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
         <SummaryLines trays={trays} price={a.price} subtotal={subtotal} fee={fee} total={total} a={a} />
         <p className="text-sm text-ink-2">{day && slot ? `Delivery ${day.label.toLowerCase() === "today" ? "today" : day.long}, by ${fmtTime(a.deadline)}` : "No delivery day available"}</p>
         {errors.form && <Note tone="bad">{errors.form}</Note>}
-        {a.status.board ? (
-          <ClosedButton board={a.status.board} detail={a.status.detail} size="lg" />
+        {sign ? (
+          <ClosedButton board={sign} detail={signDetail} size="lg" />
         ) : (
           <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating} className="w-full">
             {locating ? "Checking your location…" : payStage === "starting" ? "Opening payment…" : payStage === "paying" ? "Waiting for payment…" : payment === "online" ? `Pay ${inr(total)} & place order` : `Place order · ${inr(total)}`}
@@ -345,8 +351,8 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
               {fee === 0 && a.deliveryFee > 0 ? " · free delivery" : ""}
             </div>
           </div>
-          {a.status.board ? (
-            <ClosedButton board={a.status.board} detail={a.status.detail} size="md" className="w-44 shrink-0 min-w-0" />
+          {sign ? (
+            <ClosedButton board={sign} detail={signDetail} size="md" className="w-44 shrink-0 min-w-0" />
           ) : (
             <Button type="submit" variant="sage" size="lg" disabled={!canSubmit} loading={submitting || locating}>
               {locating ? "Checking…" : payStage !== "idle" ? "Paying…" : payment === "online" ? `Pay ${inr(total)}` : "Place order"}

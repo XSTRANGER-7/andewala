@@ -23,6 +23,7 @@ import {
 } from "@/lib/types";
 import type { placeOrderSchema } from "@/lib/validation";
 import type { z } from "zod";
+import { randomInt } from "node:crypto";
 
 type Tx = Prisma.TransactionClient;
 
@@ -54,6 +55,8 @@ export function toOrderView(o: Order): OrderView {
     status: o.status as OrderStatus,
     history,
     issue: o.issueText ? { text: o.issueText, at: (o.issueAt ?? o.updatedAt).toISOString(), resolved: o.issueResolved } : null,
+    riderId: o.riderId,
+    deliveredAt: o.deliveredAt ? o.deliveredAt.toISOString() : null,
   };
 }
 
@@ -175,6 +178,7 @@ export async function placeOrder(input: OrderInput, customerId: string, paid?: P
           notes: input.notes,
           payment: input.payment,
           deliveryZone: checked.zone,
+          deliveryCode: String(randomInt(0, 10_000)).padStart(4, "0"),
           ...(paid ? { paymentStatus: "paid", razorpayOrderId: paid.razorpayOrderId, razorpayPaymentId: paid.razorpayPaymentId } : {}),
           historyJson: JSON.stringify(history),
         },
@@ -246,7 +250,7 @@ export async function advanceOrder(id: string, by: string): Promise<OrderView> {
     const o = await tx.order.findUniqueOrThrow({ where: { id } });
     const ns = nextStatus(o.status as OrderStatus);
     if (!ns || o.status === "cancelled") throw new Error("This order cannot move further.");
-    const row = await tx.order.update({ where: { id }, data: { status: ns, historyJson: pushHistory(o, ns, by) } });
+    const row = await tx.order.update({ where: { id }, data: { status: ns, historyJson: pushHistory(o, ns, by), ...(ns === "delivered" ? { deliveredAt: new Date() } : {}) } });
     if (ns === "delivered") {
       const s = await getSettings(tx);
       await updateSettings({ stock: Math.max(0, s.stock - o.trays) }, tx);
@@ -317,4 +321,12 @@ export async function resolveIssue(id: string, by: string): Promise<OrderView> {
   const row = await prisma.order.update({ where: { id }, data: { issueResolved: true } });
   await logAudit(by, `Resolved report on ${id}`, row.issueText ?? "");
   return toOrderView(row);
+}
+
+/** For the customer's own order page: the code to give the rider, and who is bringing it. */
+export async function getDeliveryInfo(id: string): Promise<{ code: string | null; rider: { name: string; phone: string } | null }> {
+  const o = await prisma.order.findUnique({ where: { id }, select: { deliveryCode: true, riderId: true } });
+  if (!o) return { code: null, rider: null };
+  const r = o.riderId ? await prisma.rider.findUnique({ where: { id: o.riderId }, select: { name: true, phone: true } }) : null;
+  return { code: o.deliveryCode, rider: r };
 }

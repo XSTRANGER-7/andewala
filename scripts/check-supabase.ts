@@ -17,7 +17,7 @@ const bad = (m: string) => {
 };
 const info = (m: string) => console.log(`  · ${m}`);
 
-const TABLES = ["StoreConfig", "Order", "AuditLog", "Subscriber", "User", "Address", "Session", "OtpCode", "PaymentAttempt", "DeliveryZone"];
+const TABLES = ["StoreConfig", "Order", "AuditLog", "Subscriber", "User", "Address", "Session", "OtpCode", "PaymentAttempt", "DeliveryZone", "Rider"];
 
 async function main() {
   console.log("\n1. Environment");

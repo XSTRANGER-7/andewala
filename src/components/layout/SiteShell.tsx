@@ -13,7 +13,8 @@ import { coverageText } from "@/lib/zones";
 import { DeliveryNotice } from "./DeliveryNotice";
 
 /** Public page chrome: promo strip, header (with cart badge), content, footer, and the phone tab bar. */
-export async function SiteShell({ children }: { children: ReactNode }) {
+/** `footer`: show the site footer (only the home page does). */
+export async function SiteShell({ children, footer = false }: { children: ReactNode; footer?: boolean }) {
   // Always render per request: the header and footer show live store data, and
   // pages like the 404 would otherwise be built once with stale settings.
   await connection();
@@ -27,7 +28,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
       <Header storeName={settings.storeName} area={area} coverage={coverage} activeOrders={activeOrders} addresses={addresses} />
       <DeliveryNotice coverage={coverage} area={area} addresses={addresses} />
       <main className="flex-1 pb-14 lg:pb-0">{children}</main>
-      <Footer settings={settings} area={area} />
+      {footer && <Footer settings={settings} area={area} />}
       <MobileTabBar />
     </StoreStatusProvider>
   );

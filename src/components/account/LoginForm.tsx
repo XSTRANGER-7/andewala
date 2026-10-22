@@ -69,6 +69,11 @@ export function LoginForm({ next, pincodes, resumeProfile }: { next: string; pin
       setBusy(false);
       return setError(res.errors.code ?? "That code isn't right.");
     }
+    if (res.data.rider && (next === "/account" || next === "/")) {
+      router.replace("/rider");
+      router.refresh();
+      return;
+    }
     if (res.data.complete) {
       router.replace(next);
       router.refresh();

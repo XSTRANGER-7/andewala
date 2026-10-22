@@ -21,11 +21,12 @@ export async function requestCodeAction(contact: string): Promise<Result<{ chann
   return { ok: true, data: { channel: res.channel, target: res.target, devCode: res.devCode, isNew: res.isNew } };
 }
 
-export async function verifyCodeAction(contact: string, code: string): Promise<Result<{ isNew: boolean; complete: boolean }>> {
+export async function verifyCodeAction(contact: string, code: string): Promise<Result<{ isNew: boolean; complete: boolean; rider: boolean }>> {
   const res = await verifyCode(contact, code);
   if (!res.ok) return { ok: false, errors: { code: res.error } };
   refresh();
-  return { ok: true, data: { isNew: res.isNew, complete: accounts.profileComplete(res.user) } };
+  const rider = !!res.user.phone && !!(await prisma.rider.findFirst({ where: { phone: res.user.phone, active: true }, select: { id: true } }));
+  return { ok: true, data: { isNew: res.isNew, complete: accounts.profileComplete(res.user) || rider, rider } };
 }
 
 export async function logoutCustomerAction(): Promise<void> {

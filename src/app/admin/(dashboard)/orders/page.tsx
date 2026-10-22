@@ -7,6 +7,7 @@ import { inr } from "@/lib/money";
 import { fmtDay, fmtWhen, nowIst } from "@/lib/time";
 import type { OrderView } from "@/lib/types";
 import { listOrdersForAdmin, type AdminOrderFilter } from "@/server/orders";
+import { listRiders } from "@/server/riders";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,8 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
     status: STATUS_KEYS.includes(sp.status as AdminOrderFilter["status"]) ? (sp.status as AdminOrderFilter["status"]) : "active",
   };
   const today = nowIst().date;
-  const orders = await listOrdersForAdmin(filter, today);
+  const [orders, riderList] = await Promise.all([listOrdersForAdmin(filter, today), listRiders()]);
+  const riderName = Object.fromEntries(riderList.map((r) => [r.id, r.name]));
   const trays = orders.reduce((a, o) => a + o.trays, 0);
 
   return (
@@ -61,7 +63,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                       <div className="text-xs text-ink-3">{o.slotLabel}</div>
                     </td>
                     <td className="min-w-56 px-3 py-3">
-                      <CustomerCell o={o} />
+                      <CustomerCell o={o} rider={o.riderId ? riderName[o.riderId] : undefined} />
                     </td>
                     <td className="num px-3 py-3 text-right">{o.trays}</td>
                     <td className="px-3 py-3 text-right">
@@ -99,7 +101,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                   </span>
                 </div>
                 <div className="text-sm">
-                  <CustomerCell o={o} />
+                  <CustomerCell o={o} rider={o.riderId ? riderName[o.riderId] : undefined} />
                 </div>
                 <div className="text-xs text-ink-3">
                   {paymentLabel(o.payment, o.paymentStatus)} · placed {fmtWhen(o.createdAt)}
@@ -114,7 +116,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
   );
 }
 
-function CustomerCell({ o }: { o: OrderView }) {
+function CustomerCell({ o, rider }: { o: OrderView; rider?: string }) {
   return (
     <>
       <b>{o.customer.name}</b> ·{" "}
@@ -133,6 +135,7 @@ function CustomerCell({ o }: { o: OrderView }) {
           </>
         )}
       </div>
+      {rider && <div className="text-xs font-semibold text-forest-900">Rider: {rider}</div>}
       {o.notes && <div className="text-xs text-ink-3">Note: {o.notes}</div>}
       {o.issue && (
         <Note tone="warn" className="mt-1.5 px-2 py-1 text-xs">

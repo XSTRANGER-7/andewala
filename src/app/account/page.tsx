@@ -9,6 +9,7 @@ import { StatusPill } from "@/components/ui/Pill";
 import { inr } from "@/lib/money";
 import { ACTIVE_STATUSES } from "@/lib/types";
 import { requireAccount } from "@/server/account-page";
+import { getRider } from "@/server/riders";
 import { listCustomerOrders } from "@/server/orders";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ type Option = { href: string; label: string; sub: string; Icon: ComponentType<SV
 
 /** The account menu: who you are, quick counts, and one row per section. */
 export default async function AccountPage() {
-  const profile = await requireAccount("/account");
+  const [profile, rider] = await Promise.all([requireAccount("/account"), getRider()]);
   const orders = await listCustomerOrders(profile.id);
   const active = orders.filter((o) => ACTIVE_STATUSES.includes(o.status));
   const def = profile.addresses.find((a) => a.isDefault) ?? profile.addresses[0];
@@ -83,6 +84,16 @@ export default async function AccountPage() {
         )}
 
         <InstallAppButton className="card flex items-center justify-center gap-2 border-dashed border-forest-900/40 bg-mint-50 py-3.5 text-sm font-bold text-forest-900 transition hover:border-forest-900" />
+
+        {rider && (
+          <Link href="/rider" className="card flex items-center justify-between gap-3 border-2 border-forest-900 bg-forest-900 text-white transition hover:bg-forest-800">
+            <span>
+              <span className="block text-xs font-semibold uppercase tracking-wide text-white/70">Delivery partner</span>
+              <span className="font-display text-lg font-bold">Open my deliveries</span>
+            </span>
+            <span aria-hidden="true" className="text-2xl">→</span>
+          </Link>
+        )}
 
         <nav className="grid gap-2" aria-label="Account sections">
           {options.map(({ href, label, sub, Icon, badge }) => (

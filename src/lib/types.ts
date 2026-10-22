@@ -105,6 +105,9 @@ export type OrderView = {
   status: OrderStatus;
   history: HistoryEntry[];
   issue: { text: string; at: string; resolved: boolean } | null;
+  /** Delivery partner who has / had the order. */
+  riderId: string | null;
+  deliveredAt: string | null;
 };
 
 export type SlotAvailability = DeliverySlot & { left: number; ok: boolean; reason: "" | "full" | "closed" };

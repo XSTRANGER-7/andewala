@@ -85,6 +85,12 @@ model Order {
   razorpayPaymentId String?
   /// Delivery area the pin fell in when the order was placed (null when areas aren't used).
   deliveryZone      String?
+  /// Delivery partner who took the order out (null until then).
+  riderId           String?
+  /// 4-digit code the customer gives the rider at the door (checked for orders paid online).
+  deliveryCode      String?
+  deliveryCodeTries Int       @default(0)
+  deliveredAt       DateTime?
   status            String    @default("placed")
   /// JSON array of { status, at, by }
   historyJson       String    @default("[]")
@@ -96,6 +102,7 @@ model Order {
   @@index([date, slotId])
   @@index([status])
   @@index([phone])
+  @@index([riderId])
 }
 
 model AuditLog {
@@ -218,4 +225,14 @@ model DeliveryZone {
   color      String   @default("#2f7d5b")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+/// A delivery partner. Logging in with this mobile number opens the rider dashboard.
+model Rider {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

@@ -12,7 +12,7 @@ import { StatusPill } from "@/components/ui/Pill";
 import { inr } from "@/lib/money";
 import { paymentLabel } from "@/lib/payment";
 import { fmtDay, fmtWhen, nowIst } from "@/lib/time";
-import { getOrder } from "@/server/orders";
+import { getDeliveryInfo, getOrder } from "@/server/orders";
 import { getCustomerId } from "@/server/session";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +53,9 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
   }
 
   const isNew = sp.new === "1";
+  const active = !["delivered", "cancelled"].includes(order.status);
+  const delivery = owned && active ? await getDeliveryInfo(order.id) : { code: null, rider: null };
+  const needsCode = order.payment === "online" && order.paymentStatus === "paid";
   return (
     <SiteShell>
       <div className="container-x grid max-w-3xl gap-4 py-5 sm:gap-6 sm:py-8">
@@ -81,6 +84,28 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
             <b className="num text-lg">{inr(order.total)}</b>
           </header>
           <OrderTimeline order={order} />
+          {owned && active && (delivery.rider || (needsCode && delivery.code)) && (
+            <div className="grid gap-3 rounded-xl border border-forest-900/20 bg-mint-50 p-4 sm:grid-cols-2 sm:items-center" data-delivery-box>
+              {needsCode && delivery.code && (
+                <div>
+                  <p className="eyebrow">Delivery code</p>
+                  <p className="num font-display text-3xl font-extrabold tracking-[0.3em] text-forest-900" data-delivery-code>
+                    {delivery.code}
+                  </p>
+                  <p className="text-xs text-ink-2">Share this with the rider at your door. Your order is handed over only with this code.</p>
+                </div>
+              )}
+              {delivery.rider && order.status === "out" && (
+                <div className="sm:text-right">
+                  <p className="eyebrow">Your delivery partner</p>
+                  <p className="font-semibold">{delivery.rider.name}</p>
+                  <a href={`tel:+91${delivery.rider.phone}`} className="text-sm font-semibold text-forest-900 hover:underline">
+                    Call +91 {delivery.rider.phone}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
           {order.issue && (
             <Note tone="warn">
               You reported: “{order.issue.text}” · {order.issue.resolved ? "resolved" : "we'll get back to you"}

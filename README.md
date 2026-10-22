@@ -133,6 +133,15 @@ Rules: when at least one area is active, a customer can only save an address, an
 
 How it works: areas are stored in the `DeliveryZone` table; the check is plain code in `src/lib/zones.ts` (distance for circles, ray casting for polygons), which takes microseconds for a handful of areas, so no PostGIS or paid map API is needed. The maps use OpenStreetMap.
 
+## Delivery partners (riders)
+
+Admin > **Riders**: add a rider's name and mobile number. When they log in on the website with that number (the normal OTP login), they get **/rider**:
+- **Ready for delivery**: today's (and overdue) orders nobody has taken. Tick orders and tap **Start delivery run**: they become *Out for delivery* and are assigned to that rider.
+- **My delivery run**: a map and the stops in the order that makes the trip shortest from the rider's live location. Each stop has Navigate (Google Maps), Call, **Mark delivered** and **Couldn't deliver** (back to the ready list). **Navigate all stops** opens Google Maps with every stop in order.
+- **Marking delivered**: orders paid online need the customer's 4-digit **delivery code** (shown on the customer's order page while it's active; 5 tries). Cash/UPI-on-delivery orders need "I collected ₹X", which also marks them paid.
+
+Route planning (`src/lib/route.ts`): road distances from OSRM's free public server (falls back to straight-line distance if it is unavailable), then up to 12 stops are solved exactly (Held-Karp), larger runs with nearest-neighbour + 2-opt + Or-opt. Tests: `npm run test:route`.
+
 ## Payments (Razorpay)
 
 Checkout offers **Cash on delivery** and **Pay online** (UPI, cards, netbanking, wallets through Razorpay).

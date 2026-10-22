@@ -96,6 +96,15 @@ export const zoneSchema = z
   .refine((z) => z.kind !== "polygon" || (z.points?.length ?? 0) >= 3, { message: "Click at least 3 points on the map to outline the area.", path: ["points"] });
 export type ZoneFormInput = z.infer<typeof zoneSchema>;
 
+/** A delivery partner added by the admin. */
+export const riderSchema = z.object({
+  id: z.string().min(1).max(40).optional(),
+  name: z.string().trim().min(2, "Enter the rider's name.").max(60),
+  phone: phoneSchema,
+  active: z.boolean(),
+});
+export type RiderInput = z.input<typeof riderSchema>;
+
 export const pricingSchema = z.object({
   price: z.number().int().min(1).max(100000),
   costs: z.object({
