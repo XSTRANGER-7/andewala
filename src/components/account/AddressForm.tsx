@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import type { AddressView } from "@/server/accounts";
 import { saveAddressAction } from "@/server/actions/account";
 import type { LatLng, PlaceGuess } from "@/lib/geo";
-import { isCovered, usesZones, type Coverage } from "@/lib/zones";
+import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
 
 // The map library only runs in the browser.
 const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), {
@@ -44,6 +44,9 @@ export function AddressForm({ initial, defaults, coverage, onSaved, onCancel, su
   // Fields the customer typed in themselves; the map only fills fields they haven't touched.
   const typed = useRef(new Set<string>(initial ? ["address", "pincode"] : []));
   const [makeDefault, setMakeDefault] = useState(!initial);
+  /** The customer agreed to delivery at a pin just outside the area. */
+  const [nearOk, setNearOk] = useState(false);
+  const where = pin ? coverageAt(coverage, pin) : null;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f, v: string) => {
@@ -69,8 +72,12 @@ export function AddressForm({ initial, defaults, coverage, onSaved, onCancel, su
       setErrors({ pin: "Drop the pin on your door: move the map, or tap Use my current location." });
       return;
     }
-    if (usesZones(coverage) && isCovered(coverage, pin) === false) {
+    if (usesZones(coverage) && where?.status === "outside") {
       setErrors({ pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." });
+      return;
+    }
+    if (where?.status === "near" && !nearOk) {
+      setErrors({ near: "Tick the box to confirm delivery to this spot just outside our area." });
       return;
     }
     const code = f.pincode.trim();
@@ -99,6 +106,15 @@ export function AddressForm({ initial, defaults, coverage, onSaved, onCancel, su
       <div className="grid gap-1.5">
         <span className="text-sm font-semibold">Pin your exact location</span>
         <MapPicker value={pin} onChange={onPin} autoLocate={!pin} fallbackPincode={f.pincode.trim() || pincodes[0]} coverage={coverage} error={errors.pin} />
+        {where?.status === "near" && (
+          <label className="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-sm">
+            <input type="checkbox" checked={nearOk} onChange={(e) => { setNearOk(e.target.checked); setErrors((x) => ({ ...x, near: "" })); }} className="mt-0.5 h-4 w-4 accent-forest-900" />
+            <span>
+              <b>Yes, deliver to this spot.</b> It&apos;s {where.distanceM} m outside our area, and we&apos;ll still bring your order here.
+              {errors.near && <span className="block text-xs text-bad">{errors.near}</span>}
+            </span>
+          </label>
+        )}
       </div>
       <div className="flex gap-2" role="radiogroup" aria-label="Address label">
         {LABELS.map((l) => (

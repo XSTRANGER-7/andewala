@@ -8,7 +8,8 @@ import { IconCheck, IconPin } from "@/components/ui/Icons";
 import { ButtonLink, Spinner } from "@/components/ui/Button";
 import { detectLocation, ensureLocated, saveLocated, shortLabel, useLocated } from "@/lib/addresses";
 import { cn } from "@/lib/cn";
-import { isCovered, usesZones, type Coverage } from "@/lib/zones";
+import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
+import { OPEN_LOCATION_EVENT, useDeliverySpot } from "./useDeliverySpot";
 import { setDefaultAddressAction } from "@/server/actions/account";
 
 export type ChipAddress = { id: string; label: string; address: string; landmark: string; pincode: string; isDefault: boolean; lat: number | null; lng: number | null };
@@ -31,12 +32,17 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
   const current = active ? shortLabel(active) : located ? [located.area, located.pincode].filter(Boolean).join(" · ") : null;
   const pin = active?.pincode || located?.pincode || "";
   void pin;
-  const here = active ?? located;
-  const outside = !!here && isCovered(coverage, { lat: here.lat, lng: here.lng, pincode: here.pincode }) === false;
+  const spot = useDeliverySpot(coverage, addresses);
+  const status = spot.result?.status ?? null;
+  const outside = status === "outside";
+  const near = status === "near";
 
   // Find the visitor's location as soon as the site opens, unless we already have it.
   useEffect(() => {
     void ensureLocated();
+    const openPicker = () => setOpen(true);
+    window.addEventListener(OPEN_LOCATION_EVENT, openPicker);
+    return () => window.removeEventListener(OPEN_LOCATION_EVENT, openPicker);
   }, []);
 
   async function locate() {
@@ -65,15 +71,21 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
         type="button"
         onClick={() => setOpen(true)}
         className="group flex min-w-0 max-w-full items-center gap-2 rounded-full py-1 pl-1.5 pr-1.5 text-left max-[379px]:pl-1 max-[379px]:pr-1 transition hover:bg-mint-100 sm:pl-1 sm:pr-2"
-        aria-label={current ? `Delivering to ${current}. Change address` : "Set delivery location"}
+        aria-label={current ? `${outside ? "Not deliverable at" : "Delivering to"} ${current}. Change address` : "Set delivery location"}
       >
-        <span className={cn("hidden h-8 w-8 shrink-0 place-items-center rounded-full sm:grid", outside ? "bg-warn-soft text-warn" : "bg-mint-100 text-forest-900 group-hover:bg-paper")}>
+        <span className={cn("hidden h-8 w-8 shrink-0 place-items-center rounded-full sm:grid", outside ? "bg-bad/10 text-bad" : near ? "bg-warn-soft text-warn" : "bg-mint-100 text-forest-900 group-hover:bg-paper")}>
           <IconPin width={16} height={16} />
         </span>
         <span className="grid min-w-0 leading-tight">
-          <span className="flex min-w-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ink-3 max-[379px]:text-[9px] max-[379px]:tracking-normal">
-            <span className={cn("live-dot relative inline-block h-1.5 w-1.5 shrink-0 rounded-full", outside ? "bg-warn" : "bg-good")} aria-hidden="true" />
-            <span className="truncate">Deliver to</span>
+          <span
+            className={cn(
+              "flex min-w-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide max-[379px]:text-[9px] max-[379px]:tracking-normal",
+              outside ? "text-bad" : near ? "text-warn" : "text-ink-3",
+            )}
+            data-delivery-status={status ?? "unknown"}
+          >
+            <span className={cn("live-dot relative inline-block h-1.5 w-1.5 shrink-0 rounded-full", outside ? "bg-bad" : near ? "bg-warn" : "bg-good")} aria-hidden="true" />
+            <span className="truncate">{outside ? "Not deliverable" : near ? "Just outside" : "Deliver to"}</span>
           </span>
           <span className="flex min-w-0 items-center gap-1 text-[13px] font-semibold text-ink max-[379px]:text-[12px]">
             <span className="truncate">{current ?? "Set location"}</span>
@@ -104,7 +116,8 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
                         <span className="flex items-center gap-2 text-sm font-semibold">
                           {a.label}
                           {a.id === active?.id && <IconCheck width={14} height={14} className="text-forest-900" />}
-                          {isCovered(coverage, a) === false && <span className="text-[11px] font-semibold text-warn">Outside delivery area</span>}
+                          {coverageAt(coverage, a).status === "outside" && <span className="text-[11px] font-semibold text-bad">Not deliverable</span>}
+                          {coverageAt(coverage, a).status === "near" && <span className="text-[11px] font-semibold text-warn">Just outside</span>}
                         </span>
                         <span className="truncate text-xs text-ink-2">
                           {a.address} · {a.pincode}
@@ -145,7 +158,7 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
         )}
 
         <p className={cn("text-xs", outside ? "text-warn" : "text-ink-3")}>
-          {outside ? "We don't deliver to this location yet. " : ""}
+          {outside ? "We don't deliver to this location yet. " : near ? "This spot is just outside our area, but we can still deliver here. " : ""}
           {usesZones(coverage) ? `We deliver in ${zone}.` : coverage.pincodes.length ? `We deliver to ${coverage.pincodes.join(", ")}.` : `We deliver across ${zone}.`}
         </p>
         <div className="flex justify-end">

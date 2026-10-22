@@ -153,7 +153,7 @@ export function ZoneManager({ zones, start, pincodes }: { zones: Zone[]; start: 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
       {/* map */}
-      <div className="grid gap-2">
+      <div className="grid content-start gap-2 self-start">
         <div className="flex flex-wrap gap-2">
           <form onSubmit={goToPlace} className="flex min-w-0 flex-1 gap-2">
             <input className="input min-w-0 flex-1" placeholder="Go to a place, area or PIN code…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search a place" />

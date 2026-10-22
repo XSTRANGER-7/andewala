@@ -53,18 +53,69 @@ export function zonesAt(zones: Zone[], p: LatLng): Zone[] {
 
 export const usesZones = (c: Coverage) => c.zones.some((z) => z.active);
 
+/** A spot this close outside an area's edge can still be delivered to, if the customer says so. */
+export const NEAR_EDGE_M = 200;
+
+/** Distance from a point to the segment a–b, in metres (flat-earth approximation, fine at city scale). */
+function distanceToSegmentM(p: LatLng, a: LatLng, b: LatLng): number {
+  const kx = Math.cos((p.lat * Math.PI) / 180) * 111_320;
+  const ky = 110_540;
+  const ax = (a.lng - p.lng) * kx, ay = (a.lat - p.lat) * ky;
+  const bx = (b.lng - p.lng) * kx, by = (b.lat - p.lat) * ky;
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2));
+  return Math.hypot(ax + t * dx, ay + t * dy);
+}
+
+/** How far outside an area the point is, in metres (0 when inside). */
+export function distanceOutsideM(z: Zone, p: LatLng): number {
+  if (zoneContains(z, p)) return 0;
+  if (z.kind === "circle") return z.center && z.radiusM !== null ? Math.max(0, distanceMeters(z.center, p) - z.radiusM) : Infinity;
+  if (z.points.length < 3) return Infinity;
+  let best = Infinity;
+  for (let i = 0, j = z.points.length - 1; i < z.points.length; j = i++) best = Math.min(best, distanceToSegmentM(p, z.points[j], z.points[i]));
+  return best;
+}
+
+export type CoverageAt =
+  | { status: "inside"; zone: Zone | null }
+  /** Just outside an area (within NEAR_EDGE_M): we can deliver if the customer confirms. */
+  | { status: "near"; zone: Zone; distanceM: number }
+  | { status: "outside"; zone: Zone | null; distanceM: number | null }
+  /** Can't tell: areas are in use but there's no map pin, or no valid PIN code. */
+  | { status: "unknown" };
+
+/** Where does this place stand: inside an area, just outside one, outside, or unknown. */
+export function coverageAt(c: Coverage, place: { lat?: number | null; lng?: number | null; pincode?: string }): CoverageAt {
+  if (usesZones(c)) {
+    if (place.lat == null || place.lng == null) return { status: "unknown" };
+    const p = { lat: place.lat, lng: place.lng };
+    const hits = zonesAt(c.zones, p);
+    if (hits.length) return { status: "inside", zone: hits[0] };
+    let nearest: Zone | null = null;
+    let d = Infinity;
+    for (const z of c.zones) {
+      if (!z.active) continue;
+      const dz = distanceOutsideM(z, p);
+      if (dz < d) [d, nearest] = [dz, z];
+    }
+    if (nearest && d <= NEAR_EDGE_M) return { status: "near", zone: nearest, distanceM: Math.round(d) };
+    return { status: "outside", zone: nearest, distanceM: Number.isFinite(d) ? Math.round(d) : null };
+  }
+  if (!c.pincodes.length) return { status: "inside", zone: null };
+  const pin = (place.pincode ?? "").trim();
+  if (!/^\d{6}$/.test(pin)) return { status: "unknown" };
+  return c.pincodes.includes(pin) ? { status: "inside", zone: null } : { status: "outside", zone: null, distanceM: null };
+}
+
 /**
- * Can we deliver here? `true`/`false`, or `null` when we can't tell yet
- * (areas are in use but there's no map pin).
+ * Can we deliver here? `true` inside an area or within NEAR_EDGE_M of one,
+ * `false` further out, `null` when we can't tell yet (no map pin).
  */
 export function isCovered(c: Coverage, place: { lat?: number | null; lng?: number | null; pincode?: string }): boolean | null {
-  if (usesZones(c)) {
-    if (place.lat == null || place.lng == null) return null;
-    return zonesAt(c.zones, { lat: place.lat, lng: place.lng }).length > 0;
-  }
-  if (!c.pincodes.length) return true;
-  const pin = (place.pincode ?? "").trim();
-  return /^\d{6}$/.test(pin) ? c.pincodes.includes(pin) : null;
+  const r = coverageAt(c, place);
+  return r.status === "unknown" ? null : r.status !== "outside";
 }
 
 /** "Sector 21, Model Town" or "110001, 110002": a short line for where we deliver. */

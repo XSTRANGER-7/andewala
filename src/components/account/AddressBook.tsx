@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import type { AddressView } from "@/server/accounts";
 import { deleteAddressAction, setDefaultAddressAction } from "@/server/actions/account";
 import { AddressForm } from "./AddressForm";
-import { isCovered, type Coverage } from "@/lib/zones";
+import { coverageAt, type Coverage } from "@/lib/zones";
 
 const PinPreview = dynamic(() => import("./PinPreview").then((m) => m.PinPreview), {
   ssr: false,
@@ -34,7 +34,8 @@ export function AddressBook({ addresses, coverage, defaults, selectable }: Props
   /** Address book page: the address whose pin map is open. */
   const [previewId, setPreviewId] = useState<string | null>(null);
 
-  const outside = (a: AddressView) => isCovered(coverage, a) === false;
+  const outside = (a: AddressView) => coverageAt(coverage, a).status === "outside";
+  const near = (a: AddressView) => coverageAt(coverage, a).status === "near";
 
   return (
     <div className="grid gap-2">
@@ -82,7 +83,8 @@ export function AddressBook({ addresses, coverage, defaults, selectable }: Props
                     <IconCheck width={12} height={12} /> Default
                   </span>
                 )}
-                {outside(a) && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">Outside delivery area</span>}
+                {outside(a) && <span className="rounded-full bg-bad/10 px-2 py-0.5 text-[11px] font-semibold text-bad">Not deliverable here</span>}
+                {near(a) && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">Just outside area · we still deliver</span>}
                 {a.lat === null && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">No map pin</span>}
               </span>
               <span className="text-ink-2">

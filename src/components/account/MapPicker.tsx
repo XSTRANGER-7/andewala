@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Circle, Map as LeafletMap } from "leaflet";
 import { IconLocate } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
-import { coverageCenter, isCovered, usesZones, zonesAt, type Coverage } from "@/lib/zones";
+import { coverageAt, coverageCenter, usesZones, type Coverage, type CoverageAt } from "@/lib/zones";
 import { geocodePincode, locateErrorText, reverseGeocode, watchBestPosition, type LatLng, type PlaceGuess, type Position } from "@/lib/geo";
 
 type Props = {
@@ -187,13 +187,22 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, covera
           <span className={cn("font-semibold", accuracy <= 15 ? "text-forest-900" : "text-warn")}> · GPS ±{Math.round(accuracy)} m{accuracy <= 15 ? " ✓" : ""}</span>
         )}
       </p>
-      {coverage && usesZones(coverage) && value && (
-        <p className={cn("text-xs font-semibold", isCovered(coverage, value) ? "text-good" : "text-bad")} aria-live="polite">
-          {isCovered(coverage, value) ? `✓ We deliver here${zonesAt(coverage.zones, value)[0] ? ` (${zonesAt(coverage.zones, value)[0].name})` : ""}` : "✗ Outside our delivery area. Move the pin inside the shaded area."}
-        </p>
-      )}
+      {coverage && usesZones(coverage) && value && <CoverageLine result={coverageAt(coverage, value)} />}
       {notice && <p className="text-xs text-warn">{notice}</p>}
       {error && <p className="text-xs text-bad">{error}</p>}
     </div>
+  );
+}
+
+/** "We deliver here" / "just outside" / "outside" under the map. */
+function CoverageLine({ result }: { result: CoverageAt }) {
+  if (result.status === "unknown") return null;
+  const tone = result.status === "inside" ? "text-good" : result.status === "near" ? "text-warn" : "text-bad";
+  return (
+    <p className={cn("text-xs font-semibold", tone)} aria-live="polite" data-coverage={result.status}>
+      {result.status === "inside" && `✓ We deliver here${result.zone ? ` (${result.zone.name})` : ""}`}
+      {result.status === "near" && `⚠ ${result.distanceM} m outside our delivery area (${result.zone.name}). We can still deliver to this exact spot.`}
+      {result.status === "outside" && "✗ Outside our delivery area. Move the pin inside the shaded area."}
+    </p>
   );
 }

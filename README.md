@@ -127,6 +127,8 @@ Admin > **Delivery areas** is a map where you set where you deliver:
 - **Custom area**: click around a neighbourhood to outline it (3+ corners). Drag corners to adjust, double-click a corner to remove it.
 - Areas can overlap (two hubs sharing a zone is fine). Switch an area off to pause it, or remove it. **Check a location** tells you whether a spot is covered and by which area.
 
+Just outside: a spot within 200 m of an area's edge (`NEAR_EDGE_M` in `src/lib/zones.ts`) can still be delivered to. The header shows "Just outside" with an "Order here" button, and saving such an address asks the customer to tick "Yes, deliver to this spot". Further out, the header says "Not deliverable" and a strip under it explains how far the nearest area is, with "Change location". Tests: `npm run test:zones`.
+
 Rules: when at least one area is active, a customer can only save an address, and order, with a map pin inside an active area (checked in the browser for instant feedback and again on the server). Each order records the area it falls in (the nearest hub when areas overlap). With no areas, the PIN-code list in Delivery settings applies as before.
 
 How it works: areas are stored in the `DeliveryZone` table; the check is plain code in `src/lib/zones.ts` (distance for circles, ray casting for polygons), which takes microseconds for a handful of areas, so no PostGIS or paid map API is needed. The maps use OpenStreetMap.

@@ -10,6 +10,7 @@ import { listAddresses } from "@/server/accounts";
 import { countActiveOrders, getAvailability } from "@/server/orders";
 import { StoreStatusProvider } from "@/components/store/StoreStatus";
 import { coverageText } from "@/lib/zones";
+import { DeliveryNotice } from "./DeliveryNotice";
 
 /** Public page chrome: promo strip, header (with cart badge), content, footer, and the phone tab bar. */
 export async function SiteShell({ children }: { children: ReactNode }) {
@@ -24,6 +25,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
     <StoreStatusProvider status={availability.status}>
       <PromoBar s={settings} />
       <Header storeName={settings.storeName} area={area} coverage={coverage} activeOrders={activeOrders} addresses={addresses} />
+      <DeliveryNotice coverage={coverage} area={area} addresses={addresses} />
       <main className="flex-1 pb-14 lg:pb-0">{children}</main>
       <Footer settings={settings} area={area} />
       <MobileTabBar />

@@ -15,7 +15,8 @@
     "smoke": "node --conditions=react-server --import tsx scripts/smoke.ts",
     "db:deploy": "prisma migrate deploy",
     "check:supabase": "node --env-file=.env --import tsx scripts/check-supabase.ts",
-    "race": "node --conditions=react-server --import tsx scripts/race.ts"
+    "race": "node --conditions=react-server --import tsx scripts/race.ts",
+    "test:zones": "tsx --test scripts/zones.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

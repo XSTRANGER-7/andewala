@@ -6,7 +6,7 @@ import { getSettings, updateSettings } from "./settings";
 import { logAudit } from "./audit";
 import { razorpayEnabled, refundPayment } from "./razorpay";
 import { getActiveZones, listZones } from "./zones";
-import { isCovered, zonesAt, type Zone } from "@/lib/zones";
+import { coverageAt, isCovered, type Zone } from "@/lib/zones";
 import { newOrderId } from "@/lib/ids";
 import { addDays, nowIst } from "@/lib/time";
 import { computeAvailability, type BookingLite } from "@/lib/availability";
@@ -101,7 +101,8 @@ function checkOrder(settings: StoreSettings, avail: Availability, input: OrderIn
     }
     const ep = effectivePrice(settings, avail.today);
     const fee = deliveryFeeFor(input.trays, settings.deliveryFee, settings.freeDeliveryFrom);
-    const zone = input.lat != null && input.lng != null ? (zonesAt(zones, { lat: input.lat, lng: input.lng })[0]?.name ?? null) : null;
+    const at = coverageAt({ zones, pincodes: settings.pincodes }, input);
+    const zone = at.status === "inside" ? (at.zone?.name ?? null) : at.status === "near" ? `${at.zone.name} (just outside, ${at.distanceM} m)` : null;
     return { ok: true, slot: { id: slot.id, label: slot.label }, price: ep.price, fee, total: orderTotal(input.trays, ep.price, fee), zone };
 }
 
