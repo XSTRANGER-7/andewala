@@ -30,7 +30,7 @@ export async function verifyCodeAction(contact: string, code: string): Promise<R
   if (!res.ok) return { ok: false, errors: { code: res.error } };
   refresh();
   const rider = !!res.user.phone && !!(await prisma.rider.findFirst({ where: { phone: res.user.phone, active: true }, select: { id: true } }));
-  return { ok: true, data: { isNew: res.isNew, complete: accounts.profileComplete(res.user) || rider, rider } };
+  return { ok: true, data: { isNew: res.isNew, complete: (await accounts.isOnboarded(res.user.id)) || rider, rider } };
 }
 
 export async function logoutCustomerAction(): Promise<void> {
@@ -148,7 +148,7 @@ export async function passwordLoginAction(email: string, password: string): Prom
   if (!res.ok) return { ok: false, errors: { password: res.error } };
   refresh();
   const rider = !!res.user.phone && !!(await prisma.rider.findFirst({ where: { phone: res.user.phone, active: true }, select: { id: true } }));
-  return { ok: true, data: { complete: accounts.profileComplete(res.user) || rider, rider } };
+  return { ok: true, data: { complete: (await accounts.isOnboarded(res.user.id)) || rider, rider } };
 }
 
 /**
@@ -206,14 +206,15 @@ export async function sendPhoneCodeAction(phone: string): Promise<Result<{ devCo
 }
 
 /** Check the code and save the verified mobile number on the account. */
-export async function verifyPhoneCodeAction(phone: string, code: string): Promise<Result> {
+export async function verifyPhoneCodeAction(phone: string, code: string, opts: { stay?: boolean } = {}): Promise<Result> {
   const parsed = phoneSchema.safeParse(phone);
   if (!parsed.success || typeof code !== "string") return { ok: false, errors: { code: "Enter the 6-digit code." } };
   try {
     const user = await requireUser();
     const r = await verifyPhoneCode(user.id, parsed.data, code.slice(0, 10));
     if (!r.ok) return { ok: false, errors: { code: r.error } };
-    refresh();
+    // During sign-up the form stays put (shows "Verified") until the rest is filled in.
+    if (!opts.stay) refresh();
     return { ok: true, data: undefined };
   } catch {
     return { ok: false, errors: { code: "Log in again to verify your number." } };

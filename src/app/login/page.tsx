@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/account/LoginForm";
 import { SiteShell } from "@/components/layout/SiteShell";
-import { getProfile, profileComplete } from "@/server/accounts";
+import { getProfile, onboarded } from "@/server/accounts";
 import { getUser } from "@/server/customer-auth";
 import { getSettings } from "@/server/settings";
 import { getActiveZones } from "@/server/zones";
@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const [{ next, google: googleError }, user] = await Promise.all([searchParams, getUser()]);
   const dest = safeNext(next);
   const profile = user ? await getProfile(user.id) : null;
-  if (profile && profileComplete(profile)) redirect(dest);
+  if (profile && onboarded(profile)) redirect(dest);
   // Logged in but the profile was never finished: pick up at the details step.
   const resumeProfile = profile
     ? { name: profile.name, email: profile.email, hasAddress: profile.addresses.length > 0, hasPassword: profile.hasPassword, phone: profile.phone, phoneVerified: profile.phoneVerified }
@@ -32,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <header className="grid gap-1">
           <p className="eyebrow">Account</p>
           <h1 className="font-display text-2xl font-bold sm:text-3xl">{resumeProfile ? "Finish your account" : dest === "/cart" ? "Log in to place your order" : "Log in or sign up"}</h1>
-          <p className="text-sm text-ink-2">{resumeProfile ? "Verify your mobile number and add your delivery address." : "Use your email and password, or Google."}</p>
+          <p className="text-sm text-ink-2">{resumeProfile ? "Verify your mobile number, then set a password and add your delivery address." : "Use your email and password, or Google."}</p>
         </header>
         <div className="card">
           <LoginForm key={resumeProfile ? "details" : "auth"} next={dest} coverage={{ zones, pincodes }} resumeProfile={resumeProfile} google={googleEnabled()} googleError={googleError} />

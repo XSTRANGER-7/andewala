@@ -344,7 +344,7 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
         </Field>
       </div>
 
-      <PhoneVerify verifiedPhone={verifiedPhone} onVerified={(ph) => { setVerifiedPhone(ph); setErrors((x) => ({ ...x, phone: "" })); }} error={errors.phone} />
+      <PhoneVerify stay verifiedPhone={verifiedPhone} onVerified={(ph) => { setVerifiedPhone(ph); setErrors((x) => ({ ...x, phone: "" })); }} error={errors.phone} />
 
       {needsPassword && (
         <div className="grid gap-3 sm:grid-cols-2">

@@ -10,6 +10,7 @@ import { twilioCheckCode, twilioSendCode, twilioVerifyEnabled } from "./twilio-v
 import { getSettings } from "./settings";
 import { customerLoginBlocked, recordCustomerFailure } from "./guard";
 import { hashPassword, verifyPassword } from "./password";
+import { isOnboarded } from "./accounts";
 
 /**
  * Customer login with one-time codes.
@@ -289,7 +290,7 @@ export async function loginWithPassword(emailRaw: string, password: string): Pro
 /**
  * Google said who this is (email verified by Google). Log into the account
  * with that Google id, or the one with that email (linking it), or create one.
- * The details step (name, verified mobile, address) still has to be finished.
+ * The details step (name, verified mobile, password, address) still has to be finished.
  */
 export async function signInWithGoogle(g: { sub: string; email: string; name: string }): Promise<{ ok: true; complete: boolean; rider: boolean } | { ok: false }> {
   let user = await prisma.user.findUnique({ where: { googleSub: g.sub } });
@@ -301,6 +302,5 @@ export async function signInWithGoogle(g: { sub: string; email: string; name: st
   }
   await startSession(user.id);
   const rider = !!user.phone && !!(await prisma.rider.findFirst({ where: { phone: user.phone, active: true }, select: { id: true } }));
-  const complete = user.name.trim().length >= 2 && !!user.phone && !!user.phoneVerifiedAt && !!user.email;
-  return { ok: true, complete, rider };
+  return { ok: true, complete: await isOnboarded(user.id), rider };
 }

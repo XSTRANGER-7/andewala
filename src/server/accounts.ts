@@ -44,10 +44,22 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   };
 }
 
-/** A profile is complete once it has a name, a mobile number for the rider, and an email. */
 /** Ready to order: a name, an email and a verified mobile number (the rider calls it; it can't be skipped). */
 export function profileComplete(p: { name: string; phone: string | null; email: string | null; phoneVerified: boolean }): boolean {
   return p.name.trim().length >= 2 && !!p.phone && p.phoneVerified && !!p.email;
+}
+
+/**
+ * Sign-up is finished: ready to order, plus a password and a delivery address.
+ * Until then every login (email, mobile OTP, Google) lands on the details step.
+ */
+export function onboarded(p: Pick<Profile, "name" | "phone" | "email" | "phoneVerified" | "hasPassword" | "addresses">): boolean {
+  return profileComplete(p) && p.hasPassword && p.addresses.length > 0;
+}
+
+export async function isOnboarded(userId: string): Promise<boolean> {
+  const p = await getProfile(userId);
+  return !!p && onboarded(p);
 }
 
 export async function listAddresses(userId: string): Promise<AddressView[]> {

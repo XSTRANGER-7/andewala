@@ -13,7 +13,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "
  * Verify a mobile number with a 6-digit code. One code per 2 minutes, 5 an
  * hour (the server enforces both; the countdown just shows it).
  */
-export function PhoneVerify({ verifiedPhone, onVerified, error: outerError }: { verifiedPhone: string | null; onVerified: (phone: string) => void; error?: string }) {
+export function PhoneVerify({ verifiedPhone, onVerified, error: outerError, stay }: { verifiedPhone: string | null; onVerified: (phone: string) => void; error?: string; stay?: boolean }) {
   const [editing, setEditing] = useState(!verifiedPhone);
   const [phone, setPhone] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export function PhoneVerify({ verifiedPhone, onVerified, error: outerError }: { 
     if (!sentTo) return;
     setBusy(true);
     setError("");
-    const r = await verifyPhoneCodeAction(sentTo, code);
+    const r = await verifyPhoneCodeAction(sentTo, code, { stay });
     setBusy(false);
     if (!r.ok) return setError(r.errors.code ?? "That code isn't right.");
     setEditing(false);
