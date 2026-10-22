@@ -135,14 +135,15 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
     await place();
   }
 
-  async function place() {
+  /** Place the order; `pay` overrides the selected method (e.g. cash after a failed online payment). */
+  async function place(pay: Pay = payment) {
     if (!date || !slotId || !addressId) return;
     setFarAway(null);
     setPayFail(null);
     setSubmitting(true);
     setErrors({});
-    if (payment === "online") return payOnline();
-    const res = await placeOrderAction({ trays, date, slotId, payment, addressId, notes });
+    if (pay === "online") return payOnline();
+    const res = await placeOrderAction({ trays, date, slotId, payment: pay, addressId, notes });
     if (res.ok) {
       clearDraft();
       router.push(`/order/${res.data.id}?new=1`);
@@ -378,12 +379,13 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
           canPayCash={a.payments.cod && !payFail.refunded}
           onRetry={() => {
             setPayFail(null);
-            void place();
+            void place("online");
           }}
           onCash={() => {
             setPayFail(null);
             setPayment("cod");
             persist({ payment: "cod" });
+            void place("cod");
           }}
           onClose={() => setPayFail(null)}
         />
@@ -444,16 +446,16 @@ function PaymentFailedDialog({
         </p>
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
           {canPayCash ? (
-            <Button type="button" variant="outline" onClick={onCash}>
-              Pay cash on delivery
+            <Button type="button" variant="sage" onClick={onCash}>
+              Place order · Cash on delivery
             </Button>
           ) : (
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
           )}
-          <Button ref={retryRef} type="button" variant="sage" onClick={onRetry}>
-            Try paying again
+          <Button ref={retryRef} type="button" variant="outline" onClick={onRetry}>
+            Retry online payment
           </Button>
         </div>
       </div>

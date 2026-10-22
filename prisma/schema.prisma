@@ -91,6 +91,8 @@ model Order {
   deliveryCode      String?
   deliveryCodeTries Int       @default(0)
   deliveredAt       DateTime?
+  /// Place in the rider's run (1 = first). Only the current stop is "out"; the rest wait as "packed".
+  runSeq            Int?
   status            String    @default("placed")
   /// JSON array of { status, at, by }
   historyJson       String    @default("[]")

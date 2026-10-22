@@ -55,7 +55,8 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
   const isNew = sp.new === "1";
   const active = !["delivered", "cancelled"].includes(order.status);
   const delivery = owned && active ? await getDeliveryInfo(order.id) : { code: null, rider: null };
-  const needsCode = order.payment === "online" && order.paymentStatus === "paid";
+  // Every order is handed over with the customer's delivery code.
+  const needsCode = true;
   return (
     <SiteShell>
       <div className="container-x grid max-w-3xl gap-4 py-5 sm:gap-6 sm:py-8">
@@ -92,7 +93,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
                   <p className="num font-display text-3xl font-extrabold tracking-[0.3em] text-forest-900" data-delivery-code>
                     {delivery.code}
                   </p>
-                  <p className="text-xs text-ink-2">Share this with the rider at your door. Your order is handed over only with this code.</p>
+                  <p className="text-xs text-ink-2">Share this with the rider at your door. The rider hands over your order only with this code.</p>
                 </div>
               )}
               {delivery.rider && order.status === "out" && (

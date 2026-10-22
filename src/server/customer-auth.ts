@@ -1,4 +1,5 @@
 import "server-only";
+import { MODE_COOKIE } from "./mode";
 import { cache } from "react";
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
@@ -201,4 +202,5 @@ export async function endSession(): Promise<void> {
   if (id) await prisma.session.deleteMany({ where: { id } });
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
+  jar.delete(MODE_COOKIE);
 }

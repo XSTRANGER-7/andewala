@@ -96,8 +96,8 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
       setBusy(false);
       return setError(res.errors.code ?? "That code isn't right.");
     }
-    if (res.data.rider && (next === "/account" || next === "/")) {
-      router.replace("/rider");
+    if (res.data.rider) {
+      router.replace("/mode");
       router.refresh();
       return;
     }

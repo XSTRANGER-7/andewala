@@ -135,12 +135,12 @@ How it works: areas are stored in the `DeliveryZone` table; the check is plain c
 
 ## Delivery partners (riders)
 
-Admin > **Riders**: add a rider's name and mobile number. When they log in on the website with that number (the normal OTP login), they get **/rider**:
-- **Ready for delivery**: today's (and overdue) orders nobody has taken. Tick orders and tap **Start delivery run**: they become *Out for delivery* and are assigned to that rider.
-- **My delivery run**: a map and the stops in the order that makes the trip shortest from the rider's live location. Each stop has Navigate (Google Maps), Call, **Mark delivered** and **Couldn't deliver** (back to the ready list). **Navigate all stops** opens Google Maps with every stop in order.
-- **Marking delivered**: orders paid online need the customer's 4-digit **delivery code** (shown on the customer's order page while it's active; 5 tries). Cash/UPI-on-delivery orders need "I collected ₹X", which also marks them paid.
+Admin > **Riders**: add a rider's name and mobile number. When they log in with that number (the normal OTP login) they choose **Rider mode** or **Shop as usual** (`/mode`; switch any time). Rider mode replaces the whole interface (`/rider`, no shop header or tabs; shop pages redirect there):
+- **Orders to deliver**: today's (and overdue) orders nobody has taken, nearest first.
+- **Start delivery**: the orders ranked #1, #2, … in the cheapest order from the rider's position (distance per leg, total km and minutes, map). Untick an order to leave it out; the ranking updates. **Start run** claims them.
+- **One stop at a time**: only the current stop is *Out for delivery* (that customer sees it and their delivery code); the rest wait in the run. At the door the rider enters the customer's **4-digit delivery code** (every order; 5 tries), plus "cash collected" for pay-on-delivery orders. Then the next stop comes up, chosen by re-planning the rest of the run from the stop just delivered. **Couldn't deliver** returns the order to the list and moves on.
 
-Route planning (`src/lib/route.ts`): road distances from OSRM's free public server (falls back to straight-line distance if it is unavailable), then up to 12 stops are solved exactly (Held-Karp), larger runs with nearest-neighbour + 2-opt + Or-opt. Tests: `npm run test:route`.
+Route planning (`src/lib/route.ts`): road distances from OSRM's free public server (straight-line fallback), exact Held-Karp up to 12 stops, nearest neighbour + 2-opt + Or-opt beyond. Tests: `npm run test:route`.
 
 ## Payments (Razorpay)
 

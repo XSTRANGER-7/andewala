@@ -135,7 +135,12 @@ function CustomerCell({ o, rider }: { o: OrderView; rider?: string }) {
           </>
         )}
       </div>
-      {rider && <div className="text-xs font-semibold text-forest-900">Rider: {rider}</div>}
+      {rider && (
+        <div className="text-xs font-semibold text-forest-900">
+          Rider: {rider}
+          {o.status === "out" ? " · on the way now" : o.runSeq ? ` · stop ${o.runSeq} in the run` : ""}
+        </div>
+      )}
       {o.notes && <div className="text-xs text-ink-3">Note: {o.notes}</div>}
       {o.issue && (
         <Note tone="warn" className="mt-1.5 px-2 py-1 text-xs">

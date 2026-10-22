@@ -57,6 +57,7 @@ export function toOrderView(o: Order): OrderView {
     issue: o.issueText ? { text: o.issueText, at: (o.issueAt ?? o.updatedAt).toISOString(), resolved: o.issueResolved } : null,
     riderId: o.riderId,
     deliveredAt: o.deliveredAt ? o.deliveredAt.toISOString() : null,
+    runSeq: o.runSeq,
   };
 }
 

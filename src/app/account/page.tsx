@@ -86,13 +86,13 @@ export default async function AccountPage() {
         <InstallAppButton className="card flex items-center justify-center gap-2 border-dashed border-forest-900/40 bg-mint-50 py-3.5 text-sm font-bold text-forest-900 transition hover:border-forest-900" />
 
         {rider && (
-          <Link href="/rider" className="card flex items-center justify-between gap-3 border-2 border-forest-900 bg-forest-900 text-white transition hover:bg-forest-800">
+          <a href="/api/mode?to=rider" className="card flex items-center justify-between gap-3 border-2 border-forest-900 bg-forest-900 text-white transition hover:bg-forest-800">
             <span>
               <span className="block text-xs font-semibold uppercase tracking-wide text-white/70">Delivery partner</span>
-              <span className="font-display text-lg font-bold">Open my deliveries</span>
+              <span className="font-display text-lg font-bold">Switch to rider mode</span>
             </span>
             <span aria-hidden="true" className="text-2xl">→</span>
-          </Link>
+          </a>
         )}
 
         <nav className="grid gap-2" aria-label="Account sections">

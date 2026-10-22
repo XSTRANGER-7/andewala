@@ -108,6 +108,8 @@ export type OrderView = {
   /** Delivery partner who has / had the order. */
   riderId: string | null;
   deliveredAt: string | null;
+  /** Place in the rider's run (1 = first), or null. */
+  runSeq: number | null;
 };
 
 export type SlotAvailability = DeliverySlot & { left: number; ok: boolean; reason: "" | "full" | "closed" };
