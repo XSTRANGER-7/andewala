@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { IconCheck, IconPin } from "@/components/ui/Icons";
 import { ButtonLink, Spinner } from "@/components/ui/Button";
-import { detectLocation, ensureLocated, saveLocated, shortLabel, useLocated } from "@/lib/addresses";
+import { detectLocation, ensureLocated, saveLocated, shortLabel, useLocated, useLocating } from "@/lib/addresses";
 import { cn } from "@/lib/cn";
 import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
 import { OPEN_LOCATION_EVENT, useDeliverySpot } from "./useDeliverySpot";
@@ -22,6 +22,7 @@ export type ChipAddress = { id: string; label: string; address: string; landmark
 export function LocationChip({ zone, coverage, addresses }: { zone: string; coverage: Coverage; addresses: ChipAddress[] | null }) {
   const router = useRouter();
   const located = useLocated();
+  const finding = useLocating();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
@@ -41,8 +42,16 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
   useEffect(() => {
     void ensureLocated();
     const openPicker = () => setOpen(true);
+    // The installed app (or a tab) coming back to the front: refresh a location older than 30 minutes.
+    const onShow = () => document.visibilityState === "visible" && void ensureLocated();
     window.addEventListener(OPEN_LOCATION_EVENT, openPicker);
-    return () => window.removeEventListener(OPEN_LOCATION_EVENT, openPicker);
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      window.removeEventListener(OPEN_LOCATION_EVENT, openPicker);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", onShow);
+    };
   }, []);
 
   async function locate() {
@@ -88,7 +97,7 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
             <span className="truncate">{outside ? "Not deliverable" : near ? "Just outside" : "Deliver to"}</span>
           </span>
           <span className="flex min-w-0 items-center gap-1 text-[13px] font-semibold text-ink max-[379px]:text-[12px]">
-            <span className="truncate">{current ?? "Set location"}</span>
+            <span className="truncate">{current ?? (finding ? "Finding you…" : "Set location")}</span>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-ink-3" aria-hidden="true">
               <path d="M6 9l6 6 6-6" />
             </svg>
