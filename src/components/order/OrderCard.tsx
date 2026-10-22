@@ -14,7 +14,7 @@ export function OrderCard({ order, today }: { order: OrderView; today: string })
           <Link href={`/order/${order.id}`} className="num font-bold hover:underline">
             {order.id}
           </Link>
-          <StatusPill status={order.status} />
+          <StatusPill status={order.status} customer />
         </div>
         <b className="num">{inr(order.total)}</b>
       </div>

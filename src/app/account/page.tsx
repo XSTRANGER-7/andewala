@@ -78,7 +78,7 @@ export default async function AccountPage() {
                 {active[0].trays} tray{active[0].trays > 1 ? "s" : ""} · {inr(active[0].total)} · {active[0].slotLabel}
               </p>
             </div>
-            <StatusPill status={active[0].status} />
+            <StatusPill status={active[0].status} customer />
           </Link>
         )}
 

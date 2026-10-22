@@ -76,7 +76,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
             <div className="flex items-center gap-2">
               {!isNew && <h1 className="num text-xl font-bold">{order.id}</h1>}
               {isNew && <span className="num text-xl font-bold">{order.id}</span>}
-              <StatusPill status={order.status} />
+              <StatusPill status={order.status} customer />
             </div>
             <b className="num text-lg">{inr(order.total)}</b>
           </header>

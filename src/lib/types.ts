@@ -51,6 +51,13 @@ export type FlowStatus = (typeof ORDER_FLOW)[number];
 export type OrderStatus = FlowStatus | "cancelled";
 export const ACTIVE_STATUSES: OrderStatus[] = ["placed", "confirmed", "packed", "out"];
 
+/** What customers see: three steps. "Confirmed" and "Packed" are kitchen steps for the admin and show as "Placed". */
+export const CUSTOMER_STEPS = ["placed", "out", "delivered"] as const;
+export type CustomerStep = (typeof CUSTOMER_STEPS)[number];
+export function customerStatus(s: OrderStatus): CustomerStep | "cancelled" {
+  return s === "confirmed" || s === "packed" ? "placed" : s;
+}
+
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   placed: "Placed",
   confirmed: "Confirmed",

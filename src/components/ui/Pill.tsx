@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import { STATUS_LABEL, STATUS_TONE, type OrderStatus, type StatusTone } from "@/lib/types";
+import { STATUS_LABEL, STATUS_TONE, type OrderStatus, type StatusTone, customerStatus } from "@/lib/types";
 
 const tones: Record<StatusTone | "neutral", string> = {
   neutral: "bg-mint-100 text-ink-2",
@@ -19,6 +19,8 @@ export function Pill({ tone = "neutral", children, className }: { tone?: StatusT
   );
 }
 
-export function StatusPill({ status }: { status: OrderStatus }) {
-  return <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>;
+/** Order status badge. `customer` shows the simple three-step status (Placed, Out for delivery, Delivered). */
+export function StatusPill({ status, customer }: { status: OrderStatus; customer?: boolean }) {
+  const s = customer ? customerStatus(status) : status;
+  return <Pill tone={STATUS_TONE[s]}>{STATUS_LABEL[s]}</Pill>;
 }
