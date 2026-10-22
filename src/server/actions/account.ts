@@ -5,6 +5,9 @@ import { prisma } from "@/server/db";
 import { endSession, requestCode, requireUser, verifyCode } from "@/server/customer-auth";
 import * as accounts from "@/server/accounts";
 import { addressSchema, fieldErrors, profileSchema, signupSchema, type AddressInput, type SignupInput } from "@/lib/validation";
+import { getActiveZones } from "@/server/zones";
+import { isCovered } from "@/lib/zones";
+import { getSettings } from "@/server/settings";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; errors: Record<string, string> };
 
@@ -96,6 +99,10 @@ export async function saveAddressAction(input: AddressInput, opts: { id?: string
     const user = await requireUser();
     if (opts.id && !(await accounts.getAddress(user.id, opts.id))) return { ok: false, errors: { form: "That address no longer exists." } };
     if (!opts.id && (await accounts.listAddresses(user.id)).length >= 10) return { ok: false, errors: { form: "You can save up to 10 addresses. Remove one first." } };
+    const [settings, zones] = await Promise.all([getSettings(), getActiveZones()]);
+    if (isCovered({ zones, pincodes: settings.pincodes }, parsed.data) === false) {
+      return { ok: false, errors: zones.length ? { pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." } : { pincode: `We don't deliver to ${parsed.data.pincode} yet.` } };
+    }
     const saved = await accounts.saveAddress(user.id, parsed.data, opts);
     refresh();
     return { ok: true, data: saved };

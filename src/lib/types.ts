@@ -1,3 +1,4 @@
+import type { Zone } from "./zones";
 export type DeliverySlot = {
   id: string;
   label: string;
@@ -138,6 +139,8 @@ export type Availability = {
   areaName: string;
   cutoff: string;
   deadline: string;
+  /** Active delivery areas (empty when the PIN-code list is used instead). */
+  zones: Zone[];
   /** Payment options open right now. `online` also needs Razorpay keys on the server. */
   payments: { cod: boolean; online: boolean };
   storeName: string;

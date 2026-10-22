@@ -8,16 +8,17 @@ import { IconCheck, IconPin } from "@/components/ui/Icons";
 import { ButtonLink, Spinner } from "@/components/ui/Button";
 import { detectLocation, ensureLocated, saveLocated, shortLabel, useLocated } from "@/lib/addresses";
 import { cn } from "@/lib/cn";
+import { isCovered, usesZones, type Coverage } from "@/lib/zones";
 import { setDefaultAddressAction } from "@/server/actions/account";
 
-export type ChipAddress = { id: string; label: string; address: string; landmark: string; pincode: string; isDefault: boolean };
+export type ChipAddress = { id: string; label: string; address: string; landmark: string; pincode: string; isDefault: boolean; lat: number | null; lng: number | null };
 
 /**
  * "Deliver to ..." in the header. Logged in: shows the default saved address and
  * lets the customer switch it. Not logged in: can look up the current area and
  * offers to log in to save addresses.
  */
-export function LocationChip({ zone, pincodes, addresses }: { zone: string; pincodes: string[]; addresses: ChipAddress[] | null }) {
+export function LocationChip({ zone, coverage, addresses }: { zone: string; coverage: Coverage; addresses: ChipAddress[] | null }) {
   const router = useRouter();
   const located = useLocated();
   const [open, setOpen] = useState(false);
@@ -29,7 +30,9 @@ export function LocationChip({ zone, pincodes, addresses }: { zone: string; pinc
   const active = addresses?.find((a) => a.isDefault) ?? addresses?.[0] ?? null;
   const current = active ? shortLabel(active) : located ? [located.area, located.pincode].filter(Boolean).join(" · ") : null;
   const pin = active?.pincode || located?.pincode || "";
-  const outside = !!pin && pincodes.length > 0 && !pincodes.includes(pin);
+  void pin;
+  const here = active ?? located;
+  const outside = !!here && isCovered(coverage, { lat: here.lat, lng: here.lng, pincode: here.pincode }) === false;
 
   // Find the visitor's location as soon as the site opens, unless we already have it.
   useEffect(() => {
@@ -101,7 +104,7 @@ export function LocationChip({ zone, pincodes, addresses }: { zone: string; pinc
                         <span className="flex items-center gap-2 text-sm font-semibold">
                           {a.label}
                           {a.id === active?.id && <IconCheck width={14} height={14} className="text-forest-900" />}
-                          {pincodes.length > 0 && !pincodes.includes(a.pincode) && <span className="text-[11px] font-semibold text-warn">Outside delivery area</span>}
+                          {isCovered(coverage, a) === false && <span className="text-[11px] font-semibold text-warn">Outside delivery area</span>}
                         </span>
                         <span className="truncate text-xs text-ink-2">
                           {a.address} · {a.pincode}
@@ -142,8 +145,8 @@ export function LocationChip({ zone, pincodes, addresses }: { zone: string; pinc
         )}
 
         <p className={cn("text-xs", outside ? "text-warn" : "text-ink-3")}>
-          {outside ? `We don't deliver to ${pin} yet. ` : ""}
-          {pincodes.length ? `We deliver to ${pincodes.join(", ")}.` : `We deliver across ${zone}.`}
+          {outside ? "We don't deliver to this location yet. " : ""}
+          {usesZones(coverage) ? `We deliver in ${zone}.` : coverage.pincodes.length ? `We deliver to ${coverage.pincodes.join(", ")}.` : `We deliver across ${zone}.`}
         </p>
         <div className="flex justify-end">
           <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-mint-100">

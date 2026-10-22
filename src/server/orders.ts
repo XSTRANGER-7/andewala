@@ -5,6 +5,8 @@ import { lockStore, prisma, TX_OPTIONS } from "./db";
 import { getSettings, updateSettings } from "./settings";
 import { logAudit } from "./audit";
 import { razorpayEnabled, refundPayment } from "./razorpay";
+import { getActiveZones, listZones } from "./zones";
+import { isCovered, zonesAt, type Zone } from "@/lib/zones";
 import { newOrderId } from "@/lib/ids";
 import { addDays, nowIst } from "@/lib/time";
 import { computeAvailability, type BookingLite } from "@/lib/availability";
@@ -70,21 +72,21 @@ export async function getBookings(tx: Tx = prisma, today = nowIst().date): Promi
 export const getAvailability = cache(async (): Promise<Availability> => {
   const now = nowIst();
   const [settings, bookings] = await Promise.all([getSettings(), getBookings(prisma, now.date)]);
-  const a = computeAvailability(settings, bookings, now);
+  const [a, zones] = [computeAvailability(settings, bookings, now), await getActiveZones()];
   // Online payment needs the Razorpay keys as well as the admin switch.
-  return { ...a, payments: { ...a.payments, online: a.payments.online && razorpayEnabled() } };
+  return { ...a, zones, payments: { ...a.payments, online: a.payments.online && razorpayEnabled() } };
 });
 
 export type PlaceOrderResult = { ok: true; order: OrderView } | { ok: false; error: string; field?: string };
 type OrderInput = z.output<typeof placeOrderSchema>;
-type Checked = { ok: true; slot: { id: string; label: string }; price: number; fee: number; total: number } | { ok: false; error: string; field?: string };
+type Checked = { ok: true; slot: { id: string; label: string }; price: number; fee: number; total: number; zone: string | null } | { ok: false; error: string; field?: string };
 
 /** Everything an order must pass: store open, area, stock, window, payment option. Shared by pricing and placing. */
-function checkOrder(settings: StoreSettings, avail: Availability, input: OrderInput, paidOnline: boolean): Checked {
+function checkOrder(settings: StoreSettings, avail: Availability, input: OrderInput, paidOnline: boolean, zones: Zone[]): Checked {
     if (!avail.status.open) return { ok: false, error: avail.status.text + ". " + avail.status.detail };
-    if (settings.pincodes.length && !settings.pincodes.includes(input.pincode)) {
-      return { ok: false, field: "pincode", error: `Sorry, we don't deliver to ${input.pincode} yet.` };
-    }
+    const covered = isCovered({ zones, pincodes: settings.pincodes }, input);
+    if (covered === false) return { ok: false, field: "pincode", error: zones.length ? "Sorry, this address is outside our delivery area." : `Sorry, we don't deliver to ${input.pincode} yet.` };
+    if (covered === null) return { ok: false, field: "pincode", error: "Drop a pin on the map for this address so we can check we deliver there." };
     if (input.trays > settings.maxTrays) return { ok: false, field: "trays", error: `Maximum ${settings.maxTrays} trays per order.` };
     if (input.trays > avail.available) {
       return { ok: false, field: "trays", error: `Only ${avail.available} tray${avail.available === 1 ? "" : "s"} left today.` };
@@ -99,14 +101,15 @@ function checkOrder(settings: StoreSettings, avail: Availability, input: OrderIn
     }
     const ep = effectivePrice(settings, avail.today);
     const fee = deliveryFeeFor(input.trays, settings.deliveryFee, settings.freeDeliveryFrom);
-    return { ok: true, slot: { id: slot.id, label: slot.label }, price: ep.price, fee, total: orderTotal(input.trays, ep.price, fee) };
+    const zone = input.lat != null && input.lng != null ? (zonesAt(zones, { lat: input.lat, lng: input.lng })[0]?.name ?? null) : null;
+    return { ok: true, slot: { id: slot.id, label: slot.label }, price: ep.price, fee, total: orderTotal(input.trays, ep.price, fee), zone };
 }
 
 /** Price an order without placing it (used before taking an online payment). */
 export async function quoteOrder(input: OrderInput): Promise<Checked> {
   const now = nowIst();
-  const [settings, bookings] = await Promise.all([getSettings(), getBookings(prisma, now.date)]);
-  return checkOrder(settings, computeAvailability(settings, bookings, now), input, false);
+  const [settings, bookings, zones] = await Promise.all([getSettings(), getBookings(prisma, now.date), getActiveZones()]);
+  return checkOrder(settings, computeAvailability(settings, bookings, now), input, false, zones);
 }
 
 /** Online payment details to attach when placing an order that has been paid. */
@@ -132,7 +135,8 @@ export async function placeOrder(input: OrderInput, customerId: string, paid?: P
     const settings = await getSettings(tx);
     const bookings = await getBookings(tx, now.date);
     const avail = computeAvailability(settings, bookings, now);
-    const checked = checkOrder(settings, avail, input, !!paid);
+    const zones = (await listZones(tx)).filter((z) => z.active);
+    const checked = checkOrder(settings, avail, input, !!paid, zones);
     if (!checked.ok) return checked;
     const { slot } = checked;
     // A paid order keeps the price the customer paid, even if the price changed a moment later.
@@ -169,6 +173,7 @@ export async function placeOrder(input: OrderInput, customerId: string, paid?: P
           lng: input.lng,
           notes: input.notes,
           payment: input.payment,
+          deliveryZone: checked.zone,
           ...(paid ? { paymentStatus: "paid", razorpayOrderId: paid.razorpayOrderId, razorpayPaymentId: paid.razorpayPaymentId } : {}),
           historyJson: JSON.stringify(history),
         },

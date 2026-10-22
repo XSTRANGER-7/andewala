@@ -118,6 +118,7 @@ export function computeAvailability(s: StoreSettings, bookings: BookingLite[], n
     deliveryFee: s.deliveryFee,
     freeDeliveryFrom: s.freeDeliveryFrom,
     pincodes: s.pincodes,
+    zones: [],
     areaName: s.areaName,
     cutoff: s.cutoff,
     deadline: s.deadline,

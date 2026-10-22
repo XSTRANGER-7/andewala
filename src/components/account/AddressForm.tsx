@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import type { AddressView } from "@/server/accounts";
 import { saveAddressAction } from "@/server/actions/account";
 import type { LatLng, PlaceGuess } from "@/lib/geo";
+import { isCovered, usesZones, type Coverage } from "@/lib/zones";
 
 // The map library only runs in the browser.
 const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), {
@@ -23,13 +24,14 @@ type Props = {
   initial?: AddressView;
   /** Pre-fill for a new address (the customer's own name and mobile). */
   defaults?: { name: string; phone: string };
-  pincodes: string[];
+  coverage: Coverage;
   onSaved: (a: AddressView) => void;
   onCancel?: () => void;
   submitLabel?: string;
 };
 
-export function AddressForm({ initial, defaults, pincodes, onSaved, onCancel, submitLabel }: Props) {
+export function AddressForm({ initial, defaults, coverage, onSaved, onCancel, submitLabel }: Props) {
+  const pincodes = usesZones(coverage) ? [] : coverage.pincodes;
   const [f, setF] = useState({
     label: initial?.label ?? "Home",
     name: initial?.name ?? defaults?.name ?? "",
@@ -67,6 +69,10 @@ export function AddressForm({ initial, defaults, pincodes, onSaved, onCancel, su
       setErrors({ pin: "Drop the pin on your door: move the map, or tap Use my current location." });
       return;
     }
+    if (usesZones(coverage) && isCovered(coverage, pin) === false) {
+      setErrors({ pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." });
+      return;
+    }
     const code = f.pincode.trim();
     if (pincodes.length && /^\d{6}$/.test(code) && !pincodes.includes(code)) {
       setErrors({ pincode: `We don't deliver to ${code} yet. We deliver to ${pincodes.join(", ")}.` });
@@ -92,7 +98,7 @@ export function AddressForm({ initial, defaults, pincodes, onSaved, onCancel, su
     >
       <div className="grid gap-1.5">
         <span className="text-sm font-semibold">Pin your exact location</span>
-        <MapPicker value={pin} onChange={onPin} autoLocate={!pin} fallbackPincode={f.pincode.trim() || pincodes[0]} error={errors.pin} />
+        <MapPicker value={pin} onChange={onPin} autoLocate={!pin} fallbackPincode={f.pincode.trim() || pincodes[0]} coverage={coverage} error={errors.pin} />
       </div>
       <div className="flex gap-2" role="radiogroup" aria-label="Address label">
         {LABELS.map((l) => (

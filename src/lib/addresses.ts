@@ -10,7 +10,7 @@ import { useMemo, useSyncExternalStore } from "react";
 const LOCATED_KEY = "eggspress:located";
 const EVENT = "eggspress:located-change";
 
-export type Located = { area: string; pincode: string; at: string };
+export type Located = { area: string; pincode: string; at: string; lat?: number; lng?: number };
 export type ShortAddress = { address: string; landmark: string; pincode: string };
 
 /** A short label for the header: the first part of the street line, plus the PIN code. */
@@ -98,5 +98,5 @@ export async function detectLocation(): Promise<Omit<Located, "at">> {
   if (!res || !res.ok) throw new Error("Found you, but couldn't look up the area name. Pick a saved address instead.");
   const j = (await res.json()) as { locality?: string; city?: string; principalSubdivision?: string; postcode?: string };
   const area = [j.locality, j.city].filter((x, i, arr) => x && arr.indexOf(x) === i).join(", ") || j.principalSubdivision || "Your location";
-  return { area, pincode: (j.postcode ?? "").replace(/\D/g, "").slice(0, 6) };
+  return { area, pincode: (j.postcode ?? "").replace(/\D/g, "").slice(0, 6), lat: latitude, lng: longitude };
 }

@@ -267,7 +267,7 @@ export function OrderForm({ a, trays: cartTrays, account }: { a: Availability; t
         {/* address */}
         <section id="delivery-address" className="grid scroll-mt-24 gap-4 border-t border-line pt-6">
           <h2 className="font-display text-xl font-bold">Deliver to</h2>
-          <AddressBook addresses={account.addresses} pincodes={a.pincodes} defaults={account.defaults} selectable={{ selectedId: addressId, onSelect: (id) => { setAddressId(id); setErrors((e) => ({ ...e, addressId: "" })); }, error: errors.addressId }} />
+          <AddressBook addresses={account.addresses} coverage={{ zones: a.zones, pincodes: a.pincodes }} defaults={account.defaults} selectable={{ selectedId: addressId, onSelect: (id) => { setAddressId(id); setErrors((e) => ({ ...e, addressId: "" })); }, error: errors.addressId }} />
           <Field label="Note for the rider" htmlFor="notes" optional>
             <input
               id="notes"

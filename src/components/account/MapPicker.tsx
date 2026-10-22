@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Circle, Map as LeafletMap } from "leaflet";
 import { IconLocate } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
+import { coverageCenter, isCovered, usesZones, zonesAt, type Coverage } from "@/lib/zones";
 import { geocodePincode, locateErrorText, reverseGeocode, watchBestPosition, type LatLng, type PlaceGuess, type Position } from "@/lib/geo";
 
 type Props = {
@@ -15,6 +16,8 @@ type Props = {
   autoLocate?: boolean;
   /** Where to centre the map when there's no pin and no live location: a delivery PIN code. */
   fallbackPincode?: string;
+  /** Delivery areas to shade on the map, and to answer "do you deliver here?" live. */
+  coverage?: Coverage;
   error?: string;
 };
 
@@ -26,7 +29,7 @@ const round = (n: number) => Math.round(n * 1e6) / 1e6;
  * under it, which is easier to place exactly than dragging a small marker on
  * a phone. "Use my current location" jumps to the live GPS position.
  */
-export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error }: Props) {
+export function MapPicker({ value, onChange, autoLocate, fallbackPincode, coverage, error }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const ring = useRef<Circle | null>(null);
@@ -97,6 +100,13 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
       const start = value ?? INDIA;
       const m = L.map(box.current, { zoomControl: true, attributionControl: true }).setView([start.lat, start.lng], value ? 18 : 5);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(m);
+      // Shade where we deliver.
+      for (const z of coverage?.zones ?? []) {
+        if (!z.active) continue;
+        const style = { color: z.color, weight: 1.5, fillColor: z.color, fillOpacity: 0.1, interactive: false };
+        if (z.kind === "circle" && z.center && z.radiusM) L.circle([z.center.lat, z.center.lng], { radius: z.radiusM, ...style }).addTo(m);
+        else if (z.points.length >= 3) L.polygon(z.points.map((p) => [p.lat, p.lng] as [number, number]), style).addTo(m);
+      }
       map.current = m;
       m.on("movestart", () => setMoving(true));
       // The customer is placing the pin by hand: stop following the GPS.
@@ -125,9 +135,10 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
       setReady(true);
       if (!value) {
         if (autoLocate) void locateRef.current();
-        const near = fallbackPincode ? await geocodePincode(fallbackPincode) : null;
+        const areaCenter = coverage ? coverageCenter(coverage) : null;
+        const near = areaCenter ?? (fallbackPincode ? await geocodePincode(fallbackPincode) : null);
         // Only use the PIN code centre if live location hasn't already moved the map.
-        if (near && !cancelled && m.getZoom() < 14) m.setView([near.lat, near.lng], 15);
+        if (near && !cancelled && m.getZoom() < 14) m.setView([near.lat, near.lng], areaCenter ? 13 : 15);
       }
     })();
     return () => {
@@ -176,6 +187,11 @@ export function MapPicker({ value, onChange, autoLocate, fallbackPincode, error 
           <span className={cn("font-semibold", accuracy <= 15 ? "text-forest-900" : "text-warn")}> · GPS ±{Math.round(accuracy)} m{accuracy <= 15 ? " ✓" : ""}</span>
         )}
       </p>
+      {coverage && usesZones(coverage) && value && (
+        <p className={cn("text-xs font-semibold", isCovered(coverage, value) ? "text-good" : "text-bad")} aria-live="polite">
+          {isCovered(coverage, value) ? `✓ We deliver here${zonesAt(coverage.zones, value)[0] ? ` (${zonesAt(coverage.zones, value)[0].name})` : ""}` : "✗ Outside our delivery area. Move the pin inside the shaded area."}
+        </p>
+      )}
       {notice && <p className="text-xs text-warn">{notice}</p>}
       {error && <p className="text-xs text-bad">{error}</p>}
     </div>

@@ -83,6 +83,8 @@ model Order {
   paymentStatus     String    @default("pending")
   razorpayOrderId   String?
   razorpayPaymentId String?
+  /// Delivery area the pin fell in when the order was placed (null when areas aren't used).
+  deliveryZone      String?
   status            String    @default("placed")
   /// JSON array of { status, at, by }
   historyJson       String    @default("[]")
@@ -196,4 +198,24 @@ model PaymentAttempt {
   updatedAt         DateTime @updatedAt
 
   @@index([userId])
+}
+
+/// A delivery area drawn by the admin: a circle around a hub, or a polygon
+/// around a neighbourhood. When at least one area is active, an address must
+/// be inside an active area; otherwise the PIN-code list in StoreConfig applies.
+model DeliveryZone {
+  id         String   @id @default(cuid())
+  name       String
+  /// "circle" or "polygon"
+  kind       String
+  centerLat  Float?
+  centerLng  Float?
+  /// Circle radius in metres.
+  radiusM    Int?
+  /// Polygon corners as JSON [[lat, lng], ...].
+  pointsJson String   @default("[]")
+  active     Boolean  @default(true)
+  color      String   @default("#2f7d5b")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

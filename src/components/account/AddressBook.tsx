@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import type { AddressView } from "@/server/accounts";
 import { deleteAddressAction, setDefaultAddressAction } from "@/server/actions/account";
 import { AddressForm } from "./AddressForm";
+import { isCovered, type Coverage } from "@/lib/zones";
 
 const PinPreview = dynamic(() => import("./PinPreview").then((m) => m.PinPreview), {
   ssr: false,
@@ -18,14 +19,14 @@ const PinPreview = dynamic(() => import("./PinPreview").then((m) => m.PinPreview
 
 type Props = {
   addresses: AddressView[];
-  pincodes: string[];
+  coverage: Coverage;
   defaults: { name: string; phone: string };
   /** Checkout mode: rows are selectable radios and `selectedId` is the delivery address. */
   selectable?: { selectedId: string | null; onSelect: (id: string) => void; error?: string };
 };
 
 /** Saved addresses with add, edit, remove and set-default. Also the address picker at checkout. */
-export function AddressBook({ addresses, pincodes, defaults, selectable }: Props) {
+export function AddressBook({ addresses, coverage, defaults, selectable }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [editing, setEditing] = useState<string | "new" | null>(addresses.length ? null : "new");
@@ -33,7 +34,7 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
   /** Address book page: the address whose pin map is open. */
   const [previewId, setPreviewId] = useState<string | null>(null);
 
-  const outside = (pin: string) => pincodes.length > 0 && !pincodes.includes(pin);
+  const outside = (a: AddressView) => isCovered(coverage, a) === false;
 
   return (
     <div className="grid gap-2">
@@ -42,7 +43,7 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
           <div key={a.id} className="rounded-xl border border-forest-900 p-3">
             <AddressForm
               initial={a}
-              pincodes={pincodes}
+              coverage={coverage}
               onCancel={() => setEditing(null)}
               onSaved={() => {
                 setEditing(null);
@@ -81,7 +82,7 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
                     <IconCheck width={12} height={12} /> Default
                   </span>
                 )}
-                {outside(a.pincode) && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">Outside delivery area</span>}
+                {outside(a) && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">Outside delivery area</span>}
                 {a.lat === null && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">No map pin</span>}
               </span>
               <span className="text-ink-2">
@@ -150,7 +151,7 @@ export function AddressBook({ addresses, pincodes, defaults, selectable }: Props
           <p className="mb-2 text-sm font-semibold">New address</p>
           <AddressForm
             defaults={defaults}
-            pincodes={pincodes}
+            coverage={coverage}
             onCancel={addresses.length ? () => setEditing(null) : undefined}
             onSaved={(saved) => {
               setEditing(null);

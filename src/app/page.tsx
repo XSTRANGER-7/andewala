@@ -24,7 +24,7 @@ export default async function HomePage() {
       <About s={settings} />
       <HowItWorks a={availability} />
       <Testimonials />
-      <Areas s={settings} />
+      <Areas s={settings} zoneNames={availability.zones.map((z) => z.name)} />
       <Newsletter />
       <Faq />
     </SiteShell>

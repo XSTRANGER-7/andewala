@@ -86,7 +86,7 @@ export function SettingsForm({ settings }: Props) {
           <Field label="Support phone" htmlFor="g-phone" optional>
             <input id="g-phone" className="input num" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} />
           </Field>
-          <Field label="PIN codes you deliver to" htmlFor="g-pins" error={pinError} hint="Comma separated. Leave empty to accept any PIN code.">
+          <Field label="PIN codes you deliver to" htmlFor="g-pins" error={pinError} hint="Comma separated. Leave empty to accept any PIN code. Used only while no map areas are set up in Delivery areas.">
             <input id="g-pins" className="input num" placeholder="110001, 110002" value={pincodes} onChange={(e) => setPincodes(e.target.value)} />
           </Field>
         </div>

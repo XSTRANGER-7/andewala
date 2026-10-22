@@ -4,7 +4,7 @@ import { IconFacebook, IconInstagram, IconMail, IconPhone, IconPin, IconWhatsapp
 import type { StoreSettings } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
 
-export function Footer({ settings }: { settings: StoreSettings }) {
+export function Footer({ settings, area }: { settings: StoreSettings; area: string }) {
   const year = new Date().getFullYear();
   return (
     <footer className="border-t border-line bg-mint-50">
@@ -54,7 +54,7 @@ export function Footer({ settings }: { settings: StoreSettings }) {
           <ul className="grid gap-2.5 text-sm text-ink-2">
             <li className="flex items-start gap-2">
               <IconPin className="mt-0.5 shrink-0 text-forest-900" />
-              <span>Delivering across {settings.pincodes.length ? settings.pincodes.join(", ") : settings.areaName}</span>
+              <span>Delivering across {area}</span>
             </li>
             {settings.supportPhone && (
               <li className="flex items-center gap-2">

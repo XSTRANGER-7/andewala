@@ -19,15 +19,18 @@ import {
   type SettingsInput,
 } from "@/lib/validation";
 import type { z } from "zod";
+import * as zones from "@/server/zones";
+import type { Zone } from "@/lib/zones";
+import { zoneSchema, type ZoneFormInput } from "@/lib/validation";
 
-export type AdminResult = { ok: true; message: string } | { ok: false; errors: Record<string, string> };
+export type AdminResult<T = undefined> = { ok: true; message: string; data?: T } | { ok: false; errors: Record<string, string> };
 
 function fail(e: unknown): AdminResult {
   return { ok: false, errors: { form: e instanceof Error ? e.message : "That didn't save. Try again." } };
 }
 
 function refreshAll() {
-  for (const p of ["/", "/cart", "/orders", "/admin", "/admin/orders", "/admin/pricing", "/admin/settings", "/admin/activity"]) {
+  for (const p of ["/", "/cart", "/orders", "/admin", "/admin/orders", "/admin/pricing", "/admin/settings", "/admin/areas", "/admin/activity", "/account/addresses"]) {
     revalidatePath(p);
   }
 }
@@ -225,6 +228,36 @@ export async function resolveIssueAction(id: string): Promise<AdminResult> {
     refreshAll();
     revalidatePath(`/order/${id}`);
     return { ok: true, message: "Report marked resolved" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Add or update a delivery area. */
+export async function saveZoneAction(input: ZoneFormInput): Promise<AdminResult<Zone>> {
+  const parsed = zoneSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
+  try {
+    const admin = await requireAdmin();
+    const z = await zones.saveZone(parsed.data);
+    await logAudit(admin.name, `${parsed.data.id ? "Updated" : "Added"} delivery area "${z.name}"`, z.kind === "circle" ? `circle ${((z.radiusM ?? 0) / 1000).toFixed(1)} km` : `${z.points.length}-point area`);
+    refreshAll();
+    return { ok: true, message: parsed.data.id ? "Area saved" : "Area added", data: z };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteZoneAction(id: string): Promise<AdminResult> {
+  try {
+    const admin = await requireAdmin();
+    const all = await zones.listZones();
+    const z = all.find((x) => x.id === id);
+    if (!z) return { ok: false, errors: { form: "That area no longer exists." } };
+    await zones.deleteZone(id);
+    await logAudit(admin.name, `Removed delivery area "${z.name}"`);
+    refreshAll();
+    return { ok: true, message: "Area removed" };
   } catch (e) {
     return fail(e);
   }

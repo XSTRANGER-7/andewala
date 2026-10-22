@@ -5,6 +5,7 @@ import { SiteShell } from "@/components/layout/SiteShell";
 import { getProfile, profileComplete } from "@/server/accounts";
 import { getUser } from "@/server/customer-auth";
 import { getSettings } from "@/server/settings";
+import { getActiveZones } from "@/server/zones";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Log in", robots: { index: false } };
@@ -21,7 +22,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (profile && profileComplete(profile)) redirect(dest);
   // Logged in but the profile was never finished: pick up at the details step.
   const resumeProfile = profile ? { name: profile.name, email: profile.email, hasAddress: profile.addresses.length > 0 } : undefined;
-  const { pincodes } = await getSettings();
+  // With map areas in use the sign-up address is checked by its map pin later, not by PIN code.
+  const [{ pincodes: pinList }, zones] = await Promise.all([getSettings(), getActiveZones()]);
+  const pincodes = zones.length ? [] : pinList;
   return (
     <SiteShell>
       <div className="container-x grid max-w-md gap-5 py-8 sm:py-12">

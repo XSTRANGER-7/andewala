@@ -120,6 +120,17 @@ The app uses Supabase in two ways. Prisma stays as the code layer either way.
 
 **Concurrency.** Placing, cancelling and delivering an order take a Postgres advisory lock (`lockStore` in `src/server/db.ts`), so two customers can't buy the last tray at the same moment.
 
+## Delivery areas
+
+Admin > **Delivery areas** is a map where you set where you deliver:
+- **Circle around a hub**: click the hub on the map and set the radius (200 m to 50 km). Drag the dot to move it.
+- **Custom area**: click around a neighbourhood to outline it (3+ corners). Drag corners to adjust, double-click a corner to remove it.
+- Areas can overlap (two hubs sharing a zone is fine). Switch an area off to pause it, or remove it. **Check a location** tells you whether a spot is covered and by which area.
+
+Rules: when at least one area is active, a customer can only save an address, and order, with a map pin inside an active area (checked in the browser for instant feedback and again on the server). Each order records the area it falls in (the nearest hub when areas overlap). With no areas, the PIN-code list in Delivery settings applies as before.
+
+How it works: areas are stored in the `DeliveryZone` table; the check is plain code in `src/lib/zones.ts` (distance for circles, ray casting for polygons), which takes microseconds for a handful of areas, so no PostGIS or paid map API is needed. The maps use OpenStreetMap.
+
 ## Payments (Razorpay)
 
 Checkout offers **Cash on delivery** and **Pay online** (UPI, cards, netbanking, wallets through Razorpay).

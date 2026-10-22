@@ -78,6 +78,24 @@ export const settingsSchema = z
   .refine((s) => s.openTime < s.cutoff, { message: "The store must open before it closes.", path: ["openTime"] });
 export type SettingsInput = z.infer<typeof settingsSchema>;
 
+const latLng = z.object({ lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180) });
+
+/** A delivery area from the admin map. */
+export const zoneSchema = z
+  .object({
+    id: z.string().min(1).max(40).optional(),
+    name: z.string().trim().min(2, "Give the area a name.").max(60),
+    kind: z.enum(["circle", "polygon"]),
+    center: latLng.nullable().optional(),
+    radiusM: z.number().int().min(200, "Make the circle at least 200 m.").max(50_000, "Keep the circle under 50 km.").nullable().optional(),
+    points: z.array(latLng).max(200, "Use at most 200 corners.").optional(),
+    active: z.boolean(),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  })
+  .refine((z) => z.kind !== "circle" || (!!z.center && !!z.radiusM), { message: "Click the map to place the hub, and set a radius.", path: ["center"] })
+  .refine((z) => z.kind !== "polygon" || (z.points?.length ?? 0) >= 3, { message: "Click at least 3 points on the map to outline the area.", path: ["points"] });
+export type ZoneFormInput = z.infer<typeof zoneSchema>;
+
 export const pricingSchema = z.object({
   price: z.number().int().min(1).max(100000),
   costs: z.object({
