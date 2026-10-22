@@ -133,6 +133,16 @@ Rules: when at least one area is active, a customer can only save an address, an
 
 How it works: areas are stored in the `DeliveryZone` table; the check is plain code in `src/lib/zones.ts` (distance for circles, ray casting for polygons), which takes microseconds for a handful of areas, so no PostGIS or paid map API is needed. The maps use OpenStreetMap.
 
+## Security
+
+- **Orders are private**: an order page, cancelling and reporting a problem need the logged-in account that placed it. Anyone else (or a wrong id) gets the same "not found", so ids can't be probed. There is no phone-number-only lookup.
+- **Server decides everything that matters**: price, delivery fee, total, stock, delivery window, area and payment amount are computed on the server; the browser only sends choices (trays, day, address id, payment method), which are validated.
+- **Limits** (`src/server/guard.ts`): at most 5 orders on the way and 10 orders an hour per customer; 15 online payments started an hour; an identical cash order within 30 s is treated as a double tap and returns the first order; 5 wrong admin passwords per network lock admin sign-in for 15 minutes. Login codes were already rate-limited.
+- **Payments**: Razorpay signatures checked (constant-time), payment fetched from Razorpay to confirm order, amount and capture; one order per payment; webhook signed and size-capped (100 KB).
+- **Riders**: only the assigned rider can deliver; every order needs the customer's code (5 tries).
+- **Browser hardening** (`next.config.ts`): Content-Security-Policy (only this site, Razorpay, OpenStreetMap, OSRM and BigDataCloud), no framing, nosniff, strict referrer, HSTS, location/payment permissions only. Server actions reject requests from other sites (Next.js origin check).
+- **Map labels** from customer data are escaped before Leaflet renders them.
+
 ## Delivery partners (riders)
 
 Admin > **Riders**: add a rider's name and mobile number. When they log in with that number (the normal OTP login) they choose **Rider mode** or **Shop as usual** (`/mode`; switch any time). Rider mode replaces the whole interface (`/rider`, no shop header or tabs; shop pages redirect there):

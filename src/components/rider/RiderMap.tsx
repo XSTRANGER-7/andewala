@@ -73,7 +73,7 @@ export function RiderMap({ rider, stops, line }: Props) {
             iconAnchor: [next ? 16 : 13, next ? 16 : 13],
           }),
         })
-        .bindTooltip(s.label, { direction: "top", offset: [0, -14] })
+        .bindTooltip(escapeHtml(s.label), { direction: "top", offset: [0, -14] })
         .addTo(g);
     });
     if (all.length === 1) m.setView(all[0], 15);
@@ -83,4 +83,9 @@ export function RiderMap({ rider, stops, line }: Props) {
   useEffect(draw, [rider, stops, line]);  
 
   return <div ref={box} className="relative z-0 h-full w-full" aria-label="Delivery route map" />;
+}
+
+/** Leaflet tooltips take HTML: customer names must go in as text. */
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
 }

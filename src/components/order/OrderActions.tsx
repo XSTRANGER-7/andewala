@@ -9,7 +9,7 @@ import type { OrderView } from "@/lib/types";
 import { cancelMyOrderAction, reportIssueAction } from "@/server/actions/order";
 
 /** Customer-side actions on a tracking page: cancel while placed, report a problem after delivery. */
-export function OrderActions({ order, phone }: { order: OrderView; phone?: string }) {
+export function OrderActions({ order }: { order: OrderView }) {
   const router = useRouter();
   const { toast } = useToast();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -20,7 +20,7 @@ export function OrderActions({ order, phone }: { order: OrderView; phone?: strin
 
   async function cancel() {
     setBusy(true);
-    const res = await cancelMyOrderAction({ id: order.id, phone });
+    const res = await cancelMyOrderAction({ id: order.id });
     setBusy(false);
     if (res.ok) {
       setCancelOpen(false);
@@ -31,7 +31,7 @@ export function OrderActions({ order, phone }: { order: OrderView; phone?: strin
 
   async function report() {
     setBusy(true);
-    const res = await reportIssueAction({ orderId: order.id, text: issueText, phone });
+    const res = await reportIssueAction({ orderId: order.id, text: issueText });
     setBusy(false);
     if (res.ok) {
       setIssueOpen(false);

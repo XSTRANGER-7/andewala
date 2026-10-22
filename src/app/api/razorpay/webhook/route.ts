@@ -8,7 +8,10 @@ import { handlePaymentWebhook } from "@/server/payments";
  * Places the order when a customer paid but closed the app before returning.
  */
 export async function POST(req: Request) {
+  // Razorpay's events are a few KB; refuse anything big before reading it.
+  if (Number(req.headers.get("content-length") ?? 0) > 100_000) return NextResponse.json({ ok: false }, { status: 413 });
   const raw = await req.text();
+  if (raw.length > 100_000) return NextResponse.json({ ok: false }, { status: 413 });
   if (!verifyWebhookSignature(raw, req.headers.get("x-razorpay-signature"))) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }

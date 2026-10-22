@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { EggTray } from "@/components/art/EggTray";
 import { SiteShell } from "@/components/layout/SiteShell";
-import { FindOrderForm } from "@/components/order/FindOrderForm";
 import { OrderActions } from "@/components/order/OrderActions";
 import { OrderTimeline } from "@/components/order/OrderTimeline";
 import { AddToCart } from "@/components/cart/AddToCart";
@@ -26,31 +25,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function OrderDetailPage({ params, searchParams }: Props) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
-  const order = await getOrder(id);
-  if (!order) notFound();
-
+  // Orders are private to the account that placed them.
   const cid = await getCustomerId();
-  const owned = !!cid && order.customerId === cid;
-  const phone = sp.phone?.replace(/\D/g, "").slice(-10);
-  const verified = owned || (!!phone && phone === order.customer.phone);
+  if (!cid) redirect(`/login?next=${encodeURIComponent(`/order/${id}`)}`);
+  const order = await getOrder(id);
+  // Missing or someone else's: the same "not found", so order ids can't be probed.
+  if (!order || order.customerId !== cid) notFound();
+  const owned = true;
   const today = nowIst().date;
-
-  if (!verified) {
-    return (
-      <SiteShell>
-        <div className="container-x grid max-w-2xl gap-6 py-10">
-          <header className="grid gap-1">
-            <p className="eyebrow">Track order</p>
-            <h1 className="font-display text-3xl font-bold">Confirm it&apos;s your order</h1>
-            <p className="text-sm text-ink-2">Enter the mobile number used for order {order.id} to see its status.</p>
-          </header>
-          <div className="card">
-            <FindOrderForm initialId={order.id} />
-          </div>
-        </div>
-      </SiteShell>
-    );
-  }
 
   const isNew = sp.new === "1";
   const active = !["delivered", "cancelled"].includes(order.status);
@@ -138,7 +120,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
             {order.notes && <Row k="Note for rider" v={order.notes} />}
           </dl>
 
-          <OrderActions order={order} phone={owned ? undefined : phone} />
+          <OrderActions order={order} />
         </article>
 
         <div className="flex flex-wrap gap-3">

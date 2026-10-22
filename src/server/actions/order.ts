@@ -6,7 +6,8 @@ import { getUser } from "@/server/customer-auth";
 import { getAddress, getProfile, profileComplete } from "@/server/accounts";
 import * as orders from "@/server/orders";
 import * as payments from "@/server/payments";
-import { cancelSchema, checkoutSchema, fieldErrors, findOrderSchema, issueSchema, type CheckoutInput, type placeOrderSchema } from "@/lib/validation";
+import { orderLimitError, paymentLimitError, recentDuplicate } from "@/server/guard";
+import { cancelSchema, checkoutSchema, fieldErrors, issueSchema, type CheckoutInput, type placeOrderSchema } from "@/lib/validation";
 import type { z } from "zod";
 
 type OrderInput = z.output<typeof placeOrderSchema>;
@@ -57,6 +58,11 @@ export async function placeOrderAction(input: CheckoutInput): Promise<ActionResu
   try {
     const p = await prepare(input);
     if (!p.ok) return p;
+    // A double tap (or a replayed request) gets the order it already made.
+    const dup = await recentDuplicate(p.userId, p.input);
+    if (dup) return { ok: true, data: { id: dup } };
+    const limited = await orderLimitError(p.userId);
+    if (limited) return { ok: false, errors: { form: limited } };
     const result = await orders.placeOrder(p.input, p.userId);
     if (!result.ok) return { ok: false, errors: { [fieldFor(result.field)]: result.error } };
     refreshOrderPages();
@@ -72,6 +78,8 @@ export async function startPaymentAction(input: CheckoutInput): Promise<ActionRe
   try {
     const p = await prepare({ ...input, payment: "online" });
     if (!p.ok) return p;
+    const limited = (await orderLimitError(p.userId)) ?? (await paymentLimitError(p.userId));
+    if (limited) return { ok: false, errors: { form: limited } };
     const r = await payments.startOnlinePayment(p.userId, p.input, p.who);
     if (!r.ok) return { ok: false, errors: { [fieldFor(r.field)]: r.error } };
     return { ok: true, data: r };
@@ -114,14 +122,15 @@ export async function paymentFailedAction(razorpayOrderId: string, reason: strin
   await payments.markPaymentFailed(user.id, razorpayOrderId, String(reason ?? "")).catch(() => {});
 }
 
-export async function cancelMyOrderAction(input: { id: string; phone?: string }): Promise<ActionResult> {
+export async function cancelMyOrderAction(input: { id: string }): Promise<ActionResult> {
   const parsed = cancelSchema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
+  // Only the logged-in customer who placed the order can cancel it.
   const customerId = await getCustomerId();
-  if (!customerId && !parsed.data.phone) return { ok: false, errors: { form: "We couldn't verify this order belongs to you." } };
+  if (!customerId) return { ok: false, errors: { form: "Log in to manage your order." } };
   try {
     const { id } = parsed.data;
-    await orders.cancelOrder(id, "customer", { customerId, phone: parsed.data.phone });
+    await orders.cancelOrder(id, "customer", { customerId });
     revalidatePath(`/order/${id}`);
     revalidatePath("/orders");
     revalidatePath("/cart");
@@ -132,28 +141,17 @@ export async function cancelMyOrderAction(input: { id: string; phone?: string })
   }
 }
 
-export async function reportIssueAction(input: { orderId: string; text: string; phone?: string }): Promise<ActionResult> {
+export async function reportIssueAction(input: { orderId: string; text: string }): Promise<ActionResult> {
   const parsed = issueSchema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
   const customerId = await getCustomerId();
-  if (!customerId && !parsed.data.phone) return { ok: false, errors: { form: "We couldn't verify this order belongs to you." } };
+  if (!customerId) return { ok: false, errors: { form: "Log in to manage your order." } };
   try {
-    await orders.reportIssue(parsed.data.orderId, { customerId, phone: parsed.data.phone }, parsed.data.text);
+    await orders.reportIssue(parsed.data.orderId, { customerId }, parsed.data.text);
     revalidatePath(`/order/${parsed.data.orderId}`);
     revalidatePath("/orders");
     return { ok: true, data: undefined };
   } catch (e) {
     return { ok: false, errors: { form: e instanceof Error ? e.message : "That didn't save. Try again." } };
   }
-}
-
-/** Look up an order by id and phone; returns the tracking URL on success. */
-export async function findOrderAction(input: { id: string; phone: string }): Promise<ActionResult<{ url: string }>> {
-  const parsed = findOrderSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
-  const order = await orders.getOrder(parsed.data.id);
-  if (!order || order.customer.phone !== parsed.data.phone) {
-    return { ok: false, errors: { form: "No order matches that ID and phone number." } };
-  }
-  return { ok: true, data: { url: `/order/${order.id}?phone=${parsed.data.phone}` } };
 }

@@ -26,23 +26,12 @@ export const placeOrderSchema = z.object({
 });
 export type PlaceOrderInput = z.input<typeof placeOrderSchema>;
 
-export const findOrderSchema = z.object({
-  id: z.string().trim().toUpperCase().min(6),
-  phone: phoneSchema,
-});
-
-const optionalPhone = z
-  .string()
-  .optional()
-  .transform((v) => (v ? v.replace(/\D/g, "").slice(-10) : undefined));
-
 export const issueSchema = z.object({
-  orderId: z.string().min(1),
+  orderId: z.string().min(1).max(40),
   text: z.string().trim().min(3, "Tell us what went wrong.").max(500),
-  phone: optionalPhone,
 });
 
-export const cancelSchema = z.object({ id: z.string().min(1), phone: optionalPhone });
+export const cancelSchema = z.object({ id: z.string().min(1).max(40) });
 
 export const emailSchema = z.string().trim().toLowerCase().email("Enter a valid email address.");
 

@@ -265,9 +265,8 @@ export async function advanceOrder(id: string, by: string): Promise<OrderView> {
 export type OwnerProof = { customerId: string | null; phone?: string };
 
 function ownedBy(o: Order, proof: OwnerProof): boolean {
-  if (proof.customerId && o.customerId === proof.customerId) return true;
-  if (proof.phone && o.phone === proof.phone) return true;
-  return false;
+  // Orders belong to the logged-in account that placed them; a phone number alone is not proof.
+  return !!proof.customerId && o.customerId === proof.customerId;
 }
 
 /** Cancel an order. With `proof` it is a customer cancelling (only while "placed"); without, an admin. Paid online orders are refunded. */
