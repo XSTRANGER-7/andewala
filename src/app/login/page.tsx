@@ -22,9 +22,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (profile && profileComplete(profile)) redirect(dest);
   // Logged in but the profile was never finished: pick up at the details step.
   const resumeProfile = profile ? { name: profile.name, email: profile.email, hasAddress: profile.addresses.length > 0 } : undefined;
-  // With map areas in use the sign-up address is checked by its map pin later, not by PIN code.
-  const [{ pincodes: pinList }, zones] = await Promise.all([getSettings(), getActiveZones()]);
-  const pincodes = zones.length ? [] : pinList;
+  const [{ pincodes }, zones] = await Promise.all([getSettings(), getActiveZones()]);
   return (
     <SiteShell>
       <div className="container-x grid max-w-md gap-5 py-8 sm:py-12">
@@ -34,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <p className="text-sm text-ink-2">Enter your mobile number to log in or create an account.</p>
         </header>
         <div className="card">
-          <LoginForm next={dest} pincodes={pincodes} resumeProfile={resumeProfile} />
+          <LoginForm next={dest} coverage={{ zones, pincodes }} resumeProfile={resumeProfile} />
         </div>
         <p className="text-center text-xs text-ink-3">Your cart stays saved while you log in.</p>
       </div>

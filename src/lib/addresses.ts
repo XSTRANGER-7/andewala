@@ -64,22 +64,30 @@ export function useLocated(): Located | null {
 export const LOCATED_MAX_AGE_MS = 30 * 60 * 1000;
 
 const LOCATING_EVENT = "eggspress:locating";
-let locating = false;
-function setLocating(v: boolean) {
-  locating = v;
+/**
+ * Where the automatic lookup stands:
+ * idle (not tried yet) · locating · done · denied (location blocked) ·
+ * waiting (the browser didn't answer: a hidden or ignored prompt) · error (no GPS, timed out).
+ */
+export type LocateStatus = "idle" | "locating" | "done" | "denied" | "waiting" | "error";
+let status: LocateStatus = "idle";
+function setStatus(v: LocateStatus) {
+  status = v;
   window.dispatchEvent(new Event(LOCATING_EVENT));
+}
+const subscribeStatus = (cb: () => void) => {
+  window.addEventListener(LOCATING_EVENT, cb);
+  return () => window.removeEventListener(LOCATING_EVENT, cb);
+};
+
+/** The automatic location lookup's state, for the header and the strip under it. */
+export function useLocateStatus(): LocateStatus {
+  return useSyncExternalStore(subscribeStatus, () => status, () => "idle");
 }
 
 /** True while the visitor's location is being looked up (the header shows "Finding you…"). */
 export function useLocating(): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      window.addEventListener(LOCATING_EVENT, cb);
-      return () => window.removeEventListener(LOCATING_EVENT, cb);
-    },
-    () => locating,
-    () => false,
-  );
+  return useLocateStatus() === "locating";
 }
 
 function readLocated(): Located | null {
@@ -107,8 +115,9 @@ function getPosition(): Promise<{ lat: number; lng: number }> {
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
       reject,
-      // A quick network fix is enough to tell whether we deliver there.
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 5 * 60 * 1000 },
+      // A quick network fix is enough to tell whether we deliver there. No timeout: the clock
+      // would also run while a permission prompt waits for the visitor's answer.
+      { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000 },
     );
   });
 }
@@ -139,32 +148,45 @@ let pending: Promise<void> | null = null;
  */
 export function ensureLocated(opts: { force?: boolean } = {}): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
-  if (!opts.force && isFresh(readLocated())) return Promise.resolve();
-  if (!pending) {
-    pending = (async () => {
-      if ((await permissionState()) === "denied") return;
-      setLocating(true);
+  if (!opts.force && isFresh(readLocated())) {
+    if (status !== "done") setStatus("done");
+    return Promise.resolve();
+  }
+  // A tap on "Use my location" always asks again (with a tap the browser shows its prompt),
+  // even if an earlier automatic request is still waiting on an unanswered prompt.
+  if (!pending || opts.force) {
+    let mine: Promise<void> | null = null;
+    mine = (async () => {
+      // Blocked earlier: the browser won't ask again until the visitor allows it in settings.
+      if (!opts.force && (await permissionState()) === "denied") return setStatus("denied");
+      setStatus("locating");
+      // A prompt the visitor hasn't answered (or one the browser tucked away) gets a visible
+      // "Use my location" button after a few seconds instead of a silent wait.
+      const nudge = setTimeout(() => status === "locating" && setStatus("waiting"), 4000);
       try {
         const p = await getPosition();
         const prev = readLocated();
         // Same place as last time: keep its name while the new one loads.
         const same = !!prev && prev.lat != null && prev.lng != null && distanceMeters({ lat: prev.lat, lng: prev.lng }, p) < 300;
         saveLocated({ area: same ? prev!.area : "Your location", pincode: same ? prev!.pincode : "", ...p });
-        setLocating(false);
+        setStatus("done");
         // The area name is a nice-to-have: look it up without holding up the next refresh.
         void areaFor(p).then((named) => {
           const now = readLocated();
           if (named && now && now.lat === p.lat && now.lng === p.lng) saveLocated({ ...named, ...p });
         });
-      } catch {
-        /* blocked, timed out or unsupported: the visitor can still pick a location by hand */
+      } catch (e) {
+        // blocked, timed out or unsupported: the strip under the header explains and offers a way on
+        const code = (e as GeolocationPositionError)?.code;
+        setStatus(code === 1 ? "denied" : code === 3 ? "waiting" : "error");
       } finally {
-        setLocating(false);
-        pending = null;
+        clearTimeout(nudge);
+        if (pending === mine) pending = null;
       }
     })();
+    pending = mine;
   }
-  return pending;
+  return pending ?? Promise.resolve();
 }
 
 /**

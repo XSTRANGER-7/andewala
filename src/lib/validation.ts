@@ -164,6 +164,9 @@ export const signupSchema = z.object({
   landmark: z.string().trim().max(120).default(""),
   pincode: pincodeSchema,
   label: z.string().trim().min(1).max(20).default("Home"),
+  /** Map pin for the first address (current location, adjustable). */
+  lat: z.number({ error: "Drop the pin on your door: move the map or use your current location." }).finite().min(-90).max(90),
+  lng: z.number({ error: "Drop the pin on your door: move the map or use your current location." }).finite().min(-180).max(180),
 });
 export type SignupInput = z.input<typeof signupSchema>;
 

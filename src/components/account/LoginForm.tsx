@@ -7,6 +7,15 @@ import { Field } from "@/components/ui/Field";
 import { Note } from "@/components/ui/Note";
 import { cn } from "@/lib/cn";
 import { completeSignupAction, requestCodeAction, saveProfileAction, verifyCodeAction } from "@/server/actions/account";
+import dynamic from "next/dynamic";
+import type { LatLng, PlaceGuess } from "@/lib/geo";
+import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
+
+// The map library only runs in the browser.
+const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), {
+  ssr: false,
+  loading: () => <div className="grid h-64 place-items-center rounded-xl border border-line bg-mint-100 text-sm text-ink-3">Loading map…</div>,
+});
 
 type Step = "contact" | "code" | "profile";
 export type ResumeProfile = { name: string; email: string | null; hasAddress: boolean };
@@ -15,7 +24,9 @@ export type ResumeProfile = { name: string; email: string | null; hasAddress: bo
  * Log in with mobile or email (existing accounts), sign up with mobile only.
  * New customers then give their name, email and first delivery address.
  */
-export function LoginForm({ next, pincodes, resumeProfile }: { next: string; pincodes: string[]; resumeProfile?: ResumeProfile }) {
+export function LoginForm({ next, coverage, resumeProfile }: { next: string; coverage: Coverage; resumeProfile?: ResumeProfile }) {
+  // With map areas in use, the pin decides; otherwise the PIN-code list.
+  const pincodes = usesZones(coverage) ? [] : coverage.pincodes;
   const router = useRouter();
   const [step, setStep] = useState<Step>(resumeProfile ? "profile" : "contact");
   const [mode, setMode] = useState<"phone" | "email">("phone");
@@ -34,6 +45,22 @@ export function LoginForm({ next, pincodes, resumeProfile }: { next: string; pin
   const [p, setP] = useState({ name: resumeProfile?.name ?? "", email: resumeProfile?.email ?? "", label: "Home", address: "", landmark: "", pincode: "" });
   const [pErrors, setPErrors] = useState<Record<string, string>>({});
   const needsAddress = !resumeProfile?.hasAddress;
+  const [pin, setPin] = useState<LatLng | null>(null);
+  const [nearOk, setNearOk] = useState(false);
+  const typed = useRef(new Set<string>());
+  const where = pin ? coverageAt(coverage, pin) : null;
+
+  function onPin(next: LatLng, guess: PlaceGuess | null) {
+    setPin(next);
+    setPErrors((e) => (e.pin ? { ...e, pin: "" } : e));
+    if (!guess) return;
+    // Fill what the pin tells us, never over what the customer typed.
+    setP((x) => ({
+      ...x,
+      address: typed.current.has("address") ? x.address : guess.line,
+      pincode: typed.current.has("pincode") || !/^\d{6}$/.test(guess.pincode) ? x.pincode : guess.pincode,
+    }));
+  }
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -85,13 +112,18 @@ export function LoginForm({ next, pincodes, resumeProfile }: { next: string; pin
 
   async function finish(e: React.FormEvent) {
     e.preventDefault();
+    if (needsAddress) {
+      if (!pin) return setPErrors({ pin: "Drop the pin on your door: move the map, or tap Use my current location." });
+      if (where?.status === "outside") return setPErrors({ pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." });
+      if (where?.status === "near" && !nearOk) return setPErrors({ near: "Tick the box to confirm delivery to this spot just outside our area." });
+    }
     if (pincodes.length && /^\d{6}$/.test(p.pincode.trim()) && !pincodes.includes(p.pincode.trim()) && needsAddress) {
       setPErrors({ pincode: `We don't deliver to ${p.pincode.trim()} yet. We deliver to ${pincodes.join(", ")}.` });
       return;
     }
     setBusy(true);
     setPErrors({});
-    const res = needsAddress ? await completeSignupAction(p) : await saveProfileAction({ name: p.name, email: p.email });
+    const res = needsAddress && pin ? await completeSignupAction({ ...p, lat: pin.lat, lng: pin.lng }) : await saveProfileAction({ name: p.name, email: p.email });
     if (!res.ok) {
       setBusy(false);
       return setPErrors(res.errors);
@@ -222,10 +254,11 @@ export function LoginForm({ next, pincodes, resumeProfile }: { next: string; pin
   }
 
   const set = (k: keyof typeof p, v: string) => {
+    typed.current.add(k);
     setP((x) => ({ ...x, [k]: v }));
     setPErrors((e) => (e[k] ? { ...e, [k]: "" } : e));
   };
-  const ready = p.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(p.email) && (!needsAddress || (p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim())));
+  const ready = p.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(p.email) && (!needsAddress || (!!pin && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim())));
 
   return (
     <form onSubmit={finish} className="grid gap-4" noValidate>
@@ -262,7 +295,21 @@ export function LoginForm({ next, pincodes, resumeProfile }: { next: string; pin
               ))}
             </div>
           </div>
-          <Field label="House, street and area" htmlFor="paddress" error={pErrors.address}>
+          <div className="grid gap-1.5">
+            <span className="text-sm font-semibold">Pin your exact location</span>
+            <span className="text-xs text-ink-3">We start at your current location. If the pin isn&apos;t on your door, move the map until it is.</span>
+            <MapPicker value={pin} onChange={onPin} autoLocate={!pin} fallbackPincode={p.pincode.trim() || pincodes[0]} coverage={coverage} error={pErrors.pin} />
+          </div>
+          {where?.status === "near" && (
+            <label className="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-sm">
+              <input type="checkbox" checked={nearOk} onChange={(e) => { setNearOk(e.target.checked); setPErrors((x) => ({ ...x, near: "" })); }} className="mt-0.5 h-4 w-4 accent-forest-900" />
+              <span>
+                <b>Yes, deliver to this spot.</b> It&apos;s {where.distanceM} m outside our area, and we&apos;ll still bring your order here.
+                {pErrors.near && <span className="block text-xs text-bad">{pErrors.near}</span>}
+              </span>
+            </label>
+          )}
+          <Field label="House / flat number, building, street and area" htmlFor="paddress" error={pErrors.address} hint="Filled in from the pin. Add your house or flat number.">
             <textarea id="paddress" className="input min-h-20" autoComplete="street-address" value={p.address} onChange={(e) => set("address", e.target.value)} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">

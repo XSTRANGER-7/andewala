@@ -45,13 +45,17 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
     const user = await requireUser();
     const me = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     if (!me.phone) return { ok: false, errors: { form: "Sign up with your mobile number first." } };
-    const { name, email, label, address, landmark, pincode } = parsed.data;
+    const { name, email, label, address, landmark, pincode, lat, lng } = parsed.data;
+    const [settings, zones] = await Promise.all([getSettings(), getActiveZones()]);
+    if (isCovered({ zones, pincodes: settings.pincodes }, { lat, lng, pincode }) === false) {
+      return { ok: false, errors: zones.length ? { pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." } : { pincode: `We don't deliver to ${pincode} yet.` } };
+    }
     if (await prisma.user.findFirst({ where: { email, NOT: { id: user.id } } })) {
       return { ok: false, errors: { email: "This email already has an account. Log in with it instead." } };
     }
     await prisma.user.update({ where: { id: user.id }, data: { name, ...(me.emailVerifiedAt ? {} : { email }) } });
     const hasAddress = (await accounts.listAddresses(user.id)).length > 0;
-    if (!hasAddress) await accounts.saveAddress(user.id, { label, name, phone: me.phone, address, landmark, pincode }, { makeDefault: true });
+    if (!hasAddress) await accounts.saveAddress(user.id, { label, name, phone: me.phone, address, landmark, pincode, lat, lng }, { makeDefault: true });
     refresh();
     return { ok: true, data: undefined };
   } catch (e) {
