@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Note } from "@/components/ui/Note";
 import { cn } from "@/lib/cn";
-import { completeSignupAction, requestCodeAction, saveProfileAction, verifyCodeAction } from "@/server/actions/account";
+import { completeSignupAction, passwordLoginAction, requestCodeAction, saveProfileAction, setPasswordAction, verifyCodeAction } from "@/server/actions/account";
 import dynamic from "next/dynamic";
 import type { LatLng, PlaceGuess } from "@/lib/geo";
 import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
@@ -18,7 +18,7 @@ const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), 
 });
 
 type Step = "contact" | "code" | "profile";
-export type ResumeProfile = { name: string; email: string | null; hasAddress: boolean };
+export type ResumeProfile = { name: string; email: string | null; hasAddress: boolean; hasPassword: boolean };
 
 /**
  * Log in with mobile or email (existing accounts), sign up with mobile only.
@@ -45,6 +45,12 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
   const [p, setP] = useState({ name: resumeProfile?.name ?? "", email: resumeProfile?.email ?? "", label: "Home", address: "", landmark: "", pincode: "" });
   const [pErrors, setPErrors] = useState<Record<string, string>>({});
   const needsAddress = !resumeProfile?.hasAddress;
+  // New accounts (and older ones without a password) choose one now, for email + password login later.
+  const needsPassword = !resumeProfile?.hasPassword;
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loginPw, setLoginPw] = useState("");
   const [pin, setPin] = useState<LatLng | null>(null);
   const [nearOk, setNearOk] = useState(false);
   const typed = useRef(new Set<string>());
@@ -67,6 +73,34 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
+
+  /** After any successful login: riders choose a mode, complete profiles continue, new ones fill in details. */
+  function afterLogin(data: { complete: boolean; rider: boolean }) {
+    if (data.rider) {
+      router.replace("/mode");
+      router.refresh();
+      return;
+    }
+    if (data.complete) {
+      router.replace(next);
+      router.refresh();
+      return;
+    }
+    setBusy(false);
+    setStep("profile");
+  }
+
+  async function passwordLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const res = await passwordLoginAction(contact, loginPw);
+    if (!res.ok) {
+      setBusy(false);
+      return setError(res.errors.password ?? res.errors.email ?? "Email or password is wrong.");
+    }
+    afterLogin(res.data);
+  }
 
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
@@ -121,12 +155,23 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
       setPErrors({ pincode: `We don't deliver to ${p.pincode.trim()} yet. We deliver to ${pincodes.join(", ")}.` });
       return;
     }
+    if (needsPassword) {
+      const problem = pwProblem(pw) ?? (pw !== pw2 ? "The two passwords don't match." : null);
+      if (problem) return setPErrors({ password: problem });
+    }
     setBusy(true);
     setPErrors({});
-    const res = needsAddress && pin ? await completeSignupAction({ ...p, lat: pin.lat, lng: pin.lng }) : await saveProfileAction({ name: p.name, email: p.email });
+    const res = needsAddress && pin ? await completeSignupAction({ ...p, lat: pin.lat, lng: pin.lng, password: pw }) : await saveProfileAction({ name: p.name, email: p.email });
     if (!res.ok) {
       setBusy(false);
       return setPErrors(res.errors);
+    }
+    if (needsPassword && !needsAddress) {
+      const r2 = await setPasswordAction({ password: pw });
+      if (!r2.ok) {
+        setBusy(false);
+        return setPErrors({ password: r2.errors.password ?? r2.errors.form ?? "That password didn't save." });
+      }
     }
     router.replace(next);
     router.refresh();
@@ -145,7 +190,7 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
     const digits = contact.replace(/\D/g, "");
     const canSend = mode === "phone" ? digits.length === 10 : /\S+@\S+\.\S+/.test(contact.trim());
     return (
-      <form onSubmit={send} className="grid gap-4" noValidate>
+      <form onSubmit={mode === "email" ? passwordLogin : send} className="grid gap-4" noValidate>
         {mode === "phone" ? (
           <Field label="Mobile number" htmlFor="contact" error={error} hint="We'll send a 6-digit code. New here? This creates your account.">
             <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-paper focus-within:border-forest-700 focus-within:ring-[3px] focus-within:ring-forest-700/20">
@@ -166,7 +211,7 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
             </div>
           </Field>
         ) : (
-          <Field label="Email" htmlFor="contact" error={error} hint="For existing accounts only. New customers sign up with a mobile number.">
+          <Field label="Email" htmlFor="contact" hint="For existing accounts with a password. New customers sign up with a mobile number.">
             <input
               id="contact"
               ref={contactRef}
@@ -184,14 +229,37 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
             />
           </Field>
         )}
+        {mode === "email" && (
+          <Field label="Password" htmlFor="login-pw">
+            <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-paper focus-within:border-forest-700 focus-within:ring-[3px] focus-within:ring-forest-700/20">
+              <input
+                id="login-pw"
+                className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-[15px] outline-none"
+                type={showPw ? "text" : "password"}
+                autoComplete="current-password"
+                value={loginPw}
+                onChange={(e) => setLoginPw(e.target.value)}
+              />
+              <button type="button" onClick={() => setShowPw((v) => !v)} className="px-3 text-xs font-semibold text-ink-3 hover:text-ink" aria-label={showPw ? "Hide password" : "Show password"}>
+                {showPw ? "Hide" : "Show"}
+              </button>
+            </div>
+          </Field>
+        )}
         {emailNotFound && (
           <button type="button" className="w-max text-sm font-semibold text-forest-900 hover:underline" onClick={() => switchMode("phone")}>
             Sign up with my mobile number →
           </button>
         )}
-        <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!canSend}>
-          {mode === "phone" ? "Continue" : "Send code"}
+        {mode === "email" && error && <p className="text-sm text-bad" role="alert">{error}</p>}
+        <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!canSend || (mode === "email" && !loginPw)}>
+          {mode === "phone" ? "Continue" : "Log in"}
         </Button>
+        {mode === "email" && (
+          <button type="button" className="w-max text-sm font-semibold text-forest-900 hover:underline" onClick={() => switchMode("phone")}>
+            Forgot password? Log in with your mobile number
+          </button>
+        )}
         <div className="flex items-center gap-3 text-xs text-ink-3">
           <span className="h-px flex-1 bg-line" />
           or
@@ -199,7 +267,7 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
         </div>
         {mode === "phone" ? (
           <button type="button" className="text-center text-sm font-semibold text-forest-900 hover:underline" onClick={() => switchMode("email")}>
-            Already have an account? Log in with email
+            Already have an account? Log in with email and password
           </button>
         ) : (
           <button type="button" className="text-center text-sm font-semibold text-forest-900 hover:underline" onClick={() => switchMode("phone")}>
@@ -258,7 +326,7 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
     setP((x) => ({ ...x, [k]: v }));
     setPErrors((e) => (e[k] ? { ...e, [k]: "" } : e));
   };
-  const ready = p.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(p.email) && (!needsAddress || (!!pin && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim())));
+  const ready = p.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(p.email) && (!needsAddress || (!!pin && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim()))) && (!needsPassword || (pw.length > 0 && pw2.length > 0));
 
   return (
     <form onSubmit={finish} className="grid gap-4" noValidate>
@@ -274,6 +342,21 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
           <input id="pemail" className="input" type="email" autoComplete="email" value={p.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
       </div>
+
+      {needsPassword && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Create a password" htmlFor="pw-new" error={pErrors.password} hint="8+ characters with a letter and a number. Log in with your email and this password, or with your mobile.">
+            <input id="pw-new" className="input" type={showPw ? "text" : "password"} autoComplete="new-password" value={pw} onChange={(e) => { setPw(e.target.value); setPErrors((x) => ({ ...x, password: "" })); }} />
+          </Field>
+          <Field label="Confirm password" htmlFor="pw-new2">
+            <input id="pw-new2" className="input" type={showPw ? "text" : "password"} autoComplete="new-password" value={pw2} onChange={(e) => { setPw2(e.target.value); setPErrors((x) => ({ ...x, password: "" })); }} />
+          </Field>
+          <label className="flex items-center gap-2 text-xs text-ink-2 sm:col-span-2">
+            <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} className="h-4 w-4 accent-forest-900" />
+            Show password
+          </label>
+        </div>
+      )}
 
       {needsAddress && (
         <fieldset className="grid gap-3 border-t border-line pt-4">
@@ -329,4 +412,12 @@ export function LoginForm({ next, coverage, resumeProfile }: { next: string; cov
       </Button>
     </form>
   );
+}
+
+/** Same rule as the server: 8+ characters with a letter and a number. */
+function pwProblem(v: string): string | null {
+  if (v.length < 8) return "Use at least 8 characters.";
+  if (v.length > 128) return "Keep it under 128 characters.";
+  if (!/[A-Za-z]/.test(v) || !/\d/.test(v)) return "Use at least one letter and one number.";
+  return null;
 }

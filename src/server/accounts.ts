@@ -14,7 +14,7 @@ export type AddressView = {
   lng: number | null;
   isDefault: boolean;
 };
-export type Profile = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean; emailVerified: boolean; addresses: AddressView[] };
+export type Profile = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean; emailVerified: boolean; hasPassword: boolean; addresses: AddressView[] };
 
 const toView = (a: AddressView): AddressView => ({
   id: a.id,
@@ -39,6 +39,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     email: u.email,
     phoneVerified: !!u.phoneVerifiedAt,
     emailVerified: !!u.emailVerifiedAt,
+    hasPassword: !!u.passwordHash,
     addresses: u.addresses.map(toView),
   };
 }

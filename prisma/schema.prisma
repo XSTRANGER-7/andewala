@@ -130,6 +130,8 @@ model User {
   /// 10-digit Indian mobile, unique when set
   phone           String?   @unique
   email           String?   @unique
+  /// scrypt hash of the customer's password (null until they set one).
+  passwordHash    String?
   phoneVerifiedAt DateTime?
   emailVerifiedAt DateTime?
   createdAt       DateTime  @default(now())

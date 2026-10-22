@@ -8,6 +8,8 @@ import { deliverCode, type Channel } from "./otp-delivery";
 import { supabaseCheckCode, supabaseOtpEnabled, supabaseSendCode } from "./supabase-auth";
 import { twilioCheckCode, twilioSendCode, twilioVerifyEnabled } from "./twilio-verify";
 import { getSettings } from "./settings";
+import { customerLoginBlocked, recordCustomerFailure } from "./guard";
+import { verifyPassword } from "./password";
 
 /**
  * Customer login with one-time codes.
@@ -203,4 +205,25 @@ export async function endSession(): Promise<void> {
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
   jar.delete(MODE_COOKIE);
+}
+
+export type PasswordLogin = { ok: true; user: CustomerUser } | { ok: false; error: string };
+
+/**
+ * Email + password login. One message for an unknown email and a wrong
+ * password (no telling which emails have accounts), and a lock after 5 wrong
+ * tries for an email or 20 from one network in 15 minutes.
+ */
+export async function loginWithPassword(emailRaw: string, password: string): Promise<PasswordLogin> {
+  const email = emailRaw.trim().toLowerCase();
+  const ip = await clientIp();
+  if (await customerLoginBlocked(email, ip)) return { ok: false, error: "Too many wrong tries. Wait 15 minutes, or log in with your mobile number." };
+  const user = await prisma.user.findUnique({ where: { email } });
+  const ok = await verifyPassword(password, user?.passwordHash);
+  if (!user || !ok) {
+    await recordCustomerFailure(email, ip);
+    return { ok: false, error: user && !user.passwordHash ? "Email or password is wrong. If you never set a password, log in with your mobile number and set one in My profile." : "Email or password is wrong." };
+  }
+  await startSession(user.id);
+  return { ok: true, user: pick(user) };
 }

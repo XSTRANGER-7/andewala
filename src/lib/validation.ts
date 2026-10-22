@@ -35,6 +35,13 @@ export const cancelSchema = z.object({ id: z.string().min(1).max(40) });
 
 export const emailSchema = z.string().trim().toLowerCase().email("Enter a valid email address.");
 
+/** At least 8 characters with a letter and a number. */
+export const passwordSchema = z
+  .string()
+  .min(8, "Use at least 8 characters.")
+  .max(128, "Keep it under 128 characters.")
+  .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), "Use at least one letter and one number.");
+
 const timeString = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM");
 
 export const slotSchema = z.object({
@@ -153,6 +160,7 @@ export const signupSchema = z.object({
   landmark: z.string().trim().max(120).default(""),
   pincode: pincodeSchema,
   label: z.string().trim().min(1).max(20).default("Home"),
+  password: passwordSchema,
   /** Map pin for the first address (current location, adjustable). */
   lat: z.number({ error: "Drop the pin on your door: move the map or use your current location." }).finite().min(-90).max(90),
   lng: z.number({ error: "Drop the pin on your door: move the map or use your current location." }).finite().min(-180).max(180),

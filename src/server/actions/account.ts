@@ -8,6 +8,10 @@ import { addressSchema, fieldErrors, profileSchema, signupSchema, type AddressIn
 import { getActiveZones } from "@/server/zones";
 import { isCovered } from "@/lib/zones";
 import { getSettings } from "@/server/settings";
+import { hashPassword, verifyPassword } from "@/server/password";
+import { clientIp, customerLoginBlocked, recordCustomerFailure } from "@/server/guard";
+import { loginWithPassword } from "@/server/customer-auth";
+import { emailSchema, passwordSchema } from "@/lib/validation";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; errors: Record<string, string> };
 
@@ -45,7 +49,7 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
     const user = await requireUser();
     const me = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     if (!me.phone) return { ok: false, errors: { form: "Sign up with your mobile number first." } };
-    const { name, email, label, address, landmark, pincode, lat, lng } = parsed.data;
+    const { name, email, label, address, landmark, pincode, lat, lng, password } = parsed.data;
     const [settings, zones] = await Promise.all([getSettings(), getActiveZones()]);
     if (isCovered({ zones, pincodes: settings.pincodes }, { lat, lng, pincode }) === false) {
       return { ok: false, errors: zones.length ? { pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." } : { pincode: `We don't deliver to ${pincode} yet.` } };
@@ -53,7 +57,7 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
     if (await prisma.user.findFirst({ where: { email, NOT: { id: user.id } } })) {
       return { ok: false, errors: { email: "This email already has an account. Log in with it instead." } };
     }
-    await prisma.user.update({ where: { id: user.id }, data: { name, ...(me.emailVerifiedAt ? {} : { email }) } });
+    await prisma.user.update({ where: { id: user.id }, data: { name, ...(me.emailVerifiedAt ? {} : { email }), passwordHash: await hashPassword(password) } });
     const hasAddress = (await accounts.listAddresses(user.id)).length > 0;
     if (!hasAddress) await accounts.saveAddress(user.id, { label, name, phone: me.phone, address, landmark, pincode, lat, lng }, { makeDefault: true });
     refresh();
@@ -135,5 +139,44 @@ export async function deleteAddressAction(id: string): Promise<Result> {
     return { ok: true, data: undefined };
   } catch {
     return { ok: false, errors: { form: "That address no longer exists." } };
+  }
+}
+
+/** Email + password login (for accounts that have set a password). */
+export async function passwordLoginAction(email: string, password: string): Promise<Result<{ complete: boolean; rider: boolean }>> {
+  if (typeof email !== "string" || typeof password !== "string" || email.length > 200 || password.length > 200) return { ok: false, errors: { password: "Email or password is wrong." } };
+  if (!emailSchema.safeParse(email).success) return { ok: false, errors: { email: "Enter a valid email address." } };
+  const res = await loginWithPassword(email, password);
+  if (!res.ok) return { ok: false, errors: { password: res.error } };
+  refresh();
+  const rider = !!res.user.phone && !!(await prisma.rider.findFirst({ where: { phone: res.user.phone, active: true }, select: { id: true } }));
+  return { ok: true, data: { complete: accounts.profileComplete(res.user) || rider, rider } };
+}
+
+/**
+ * Set or change the password from My profile. Changing needs the current
+ * password; setting the first one only needs the login (mobile OTP).
+ */
+export async function setPasswordAction(input: { current?: string; password: string }): Promise<Result> {
+  const parsed = passwordSchema.safeParse(input?.password);
+  if (!parsed.success) return { ok: false, errors: { password: parsed.error.issues[0]?.message ?? "Choose a stronger password." } };
+  try {
+    const user = await requireUser();
+    const me = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    if (me.passwordHash) {
+      const ip = await clientIp();
+      const key = me.email ?? me.id;
+      if (await customerLoginBlocked(key, ip)) return { ok: false, errors: { current: "Too many wrong tries. Wait 15 minutes." } };
+      if (!(await verifyPassword(String(input.current ?? "").slice(0, 200), me.passwordHash))) {
+        await recordCustomerFailure(key, ip);
+        return { ok: false, errors: { current: "Your current password isn't right." } };
+      }
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(parsed.data) } });
+    // Other devices stay logged in with their own sessions; this one keeps working.
+    refresh();
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, errors: { form: e instanceof Error ? e.message : "That didn't save. Try again." } };
   }
 }

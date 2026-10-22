@@ -68,3 +68,19 @@ export async function adminLoginBlocked(ip: string): Promise<boolean> {
 export async function recordAdminFailure(ip: string): Promise<void> {
   await prisma.auditLog.create({ data: { by: "security", action: ADMIN_FAIL, detail: ip } });
 }
+
+const CUSTOMER_FAIL = "Customer sign-in failed";
+
+/** Too many wrong passwords for this email (5 in 15 min) or from this network (20 in 15 min)? */
+export async function customerLoginBlocked(email: string, ip: string): Promise<boolean> {
+  const since = new Date(Date.now() - 15 * 60_000);
+  const [byEmail, byIp] = await Promise.all([
+    prisma.auditLog.count({ where: { action: CUSTOMER_FAIL, detail: `email:${email}`, at: { gte: since } } }),
+    prisma.auditLog.count({ where: { action: CUSTOMER_FAIL, by: `ip:${ip}`, at: { gte: since } } }),
+  ]);
+  return byEmail >= 5 || byIp >= 20;
+}
+
+export async function recordCustomerFailure(email: string, ip: string): Promise<void> {
+  await prisma.auditLog.create({ data: { by: `ip:${ip}`, action: CUSTOMER_FAIL, detail: `email:${email}` } });
+}

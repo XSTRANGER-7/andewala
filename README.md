@@ -135,6 +135,7 @@ How it works: areas are stored in the `DeliveryZone` table; the check is plain c
 
 ## Security
 
+- **Passwords**: sign-up (mobile + OTP) also sets a password; customers then log in with mobile + OTP or email + password. Stored only as scrypt hashes (`src/server/password.ts`); 8+ characters with a letter and a number; one message for unknown email and wrong password; 5 wrong tries per email or 20 per network in 15 minutes lock it. Older accounts set or change it in My profile (changing needs the current password).
 - **Orders are private**: an order page, cancelling and reporting a problem need the logged-in account that placed it. Anyone else (or a wrong id) gets the same "not found", so ids can't be probed. There is no phone-number-only lookup.
 - **Server decides everything that matters**: price, delivery fee, total, stock, delivery window, area and payment amount are computed on the server; the browser only sends choices (trays, day, address id, payment method), which are validated.
 - **Limits** (`src/server/guard.ts`): at most 5 orders on the way and 10 orders an hour per customer; 15 online payments started an hour; an identical cash order within 30 s is treated as a double tap and returns the first order; 5 wrong admin passwords per network lock admin sign-in for 15 minutes. Login codes were already rate-limited.

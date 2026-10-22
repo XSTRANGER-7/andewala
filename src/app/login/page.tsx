@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const profile = user ? await getProfile(user.id) : null;
   if (profile && profileComplete(profile)) redirect(dest);
   // Logged in but the profile was never finished: pick up at the details step.
-  const resumeProfile = profile ? { name: profile.name, email: profile.email, hasAddress: profile.addresses.length > 0 } : undefined;
+  const resumeProfile = profile ? { name: profile.name, email: profile.email, hasAddress: profile.addresses.length > 0, hasPassword: profile.hasPassword } : undefined;
   const [{ pincodes }, zones] = await Promise.all([getSettings(), getActiveZones()]);
   return (
     <SiteShell>
