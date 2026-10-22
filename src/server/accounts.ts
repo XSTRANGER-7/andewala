@@ -45,8 +45,9 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 }
 
 /** A profile is complete once it has a name, a mobile number for the rider, and an email. */
-export function profileComplete(p: Pick<Profile, "name" | "phone" | "email">): boolean {
-  return p.name.trim().length >= 2 && !!p.phone && !!p.email;
+/** Ready to order: a name, an email and a verified mobile number (the rider calls it; it can't be skipped). */
+export function profileComplete(p: { name: string; phone: string | null; email: string | null; phoneVerified: boolean }): boolean {
+  return p.name.trim().length >= 2 && !!p.phone && p.phoneVerified && !!p.email;
 }
 
 export async function listAddresses(userId: string): Promise<AddressView[]> {

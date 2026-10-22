@@ -8,6 +8,7 @@ import { IconCheck } from "@/components/ui/Icons";
 import { useToast } from "@/components/ui/Toast";
 import type { Profile } from "@/server/accounts";
 import { saveProfileAction, setPasswordAction } from "@/server/actions/account";
+import { PhoneVerify } from "./PhoneVerify";
 
 /** Name and contacts. A contact used to log in is verified and shown read-only; the other one can be added or changed. */
 export function ProfileCard({ profile }: { profile: Profile }) {
@@ -15,7 +16,6 @@ export function ProfileCard({ profile }: { profile: Profile }) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(profile.name);
-  const [phone, setPhone] = useState(profile.phone ?? "");
   const [email, setEmail] = useState(profile.email ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -26,7 +26,6 @@ export function ProfileCard({ profile }: { profile: Profile }) {
     setErrors({});
     const res = await saveProfileAction({
       name,
-      ...(profile.phoneVerified ? {} : { phone }),
       ...(profile.emailVerified ? {} : { email }),
     });
     setBusy(false);
@@ -56,6 +55,7 @@ export function ProfileCard({ profile }: { profile: Profile }) {
             {profile.emailVerified && <Verified />}
           </div>
         </dl>
+        {!profile.phoneVerified && <PhoneVerify verifiedPhone={null} onVerified={() => { toast("Mobile number verified"); router.refresh(); }} />}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
             Edit profile
@@ -71,10 +71,8 @@ export function ProfileCard({ profile }: { profile: Profile }) {
       <Field label="Name" htmlFor="pf-name" error={errors.name}>
         <input id="pf-name" className="input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Mobile number" htmlFor="pf-phone" error={errors.phone} hint={profile.phoneVerified ? "Verified when you logged in." : "The rider calls this number."}>
-        <input id="pf-phone" className="input num" type="tel" inputMode="numeric" disabled={profile.phoneVerified} value={phone} onChange={(e) => setPhone(e.target.value)} />
-      </Field>
-      <Field label="Email" htmlFor="pf-email" error={errors.email} hint={profile.emailVerified ? "Verified when you logged in." : "Not verified yet. Log in with it once to verify."}>
+      <PhoneVerify verifiedPhone={profile.phoneVerified ? profile.phone : null} onVerified={() => { toast("Mobile number verified"); router.refresh(); }} error={errors.phone} />
+      <Field label="Email" htmlFor="pf-email" error={errors.email} hint="You log in with this email.">
         <input id="pf-email" className="input" type="email" disabled={profile.emailVerified} value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
       {errors.form && <p className="text-sm text-bad">{errors.form}</p>}

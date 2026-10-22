@@ -132,6 +132,8 @@ model User {
   email           String?   @unique
   /// scrypt hash of the customer's password (null until they set one).
   passwordHash    String?
+  /// Google account id ("sub") once the customer has signed in with Google.
+  googleSub       String?   @unique
   phoneVerifiedAt DateTime?
   emailVerifiedAt DateTime?
   createdAt       DateTime  @default(now())
@@ -184,8 +186,11 @@ model OtpCode {
   attempts   Int       @default(0)
   consumedAt DateTime?
   ip         String    @default("")
+  /// Account that asked (phone verification after sign-up); null for login codes.
+  userId     String?
   createdAt  DateTime  @default(now())
 
+  @@index([userId, createdAt])
   @@index([target, createdAt])
   @@index([ip, createdAt])
 }
