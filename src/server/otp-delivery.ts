@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createTransport, type Transporter } from "nodemailer";
 
 /**
@@ -60,13 +61,36 @@ function smtp(): Transporter {
   return transport;
 }
 
-/** A small code email: plain text plus a few lines of inline-styled HTML (no images, no tracking). */
+/**
+ * A small but complete code email: plain text plus a simple HTML page (no
+ * images, no tracking). Complete messages with a clear sender land in the inbox
+ * more often than a bare code does.
+ */
 function codeEmail(code: string, storeName: string) {
-  const subject = `${code} is your ${storeName} code`;
-  const text = `Your ${storeName} verification code is ${code}
-
-It expires in 10 minutes. If you didn't ask for it, ignore this email.`;
-  const html = `<div style="font-family:Arial,sans-serif;color:#1d2b24;max-width:420px"><p style="margin:0 0 8px">Your ${storeName} verification code</p><p style="margin:0 0 12px;font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p style="margin:0;font-size:13px;color:#5b6b63">Expires in 10 minutes. Didn't ask for it? Ignore this email.</p></div>`;
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || "https://andewala.store").replace(/\/+$/, "");
+  const host = site.replace(/^https?:\/\//, "");
+  const subject = `${code} is your ${storeName} verification code`;
+  const text = [
+    `Hi,`,
+    ``,
+    `Use this code to verify your email on ${storeName}:`,
+    ``,
+    `    ${code}`,
+    ``,
+    `It expires in 10 minutes. If you didn't try to sign up at ${host}, you can ignore this email.`,
+    ``,
+    `${storeName} · ${site}`,
+  ].join("\n");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head>
+<body style="margin:0;padding:24px;background:#f4f7f5;font-family:Arial,Helvetica,sans-serif;color:#1d2b24">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:440px;background:#ffffff;border-radius:12px;padding:24px" cellpadding="0" cellspacing="0"><tr><td>
+<p style="margin:0 0 4px;font-size:18px;font-weight:700">${storeName}</p>
+<p style="margin:0 0 16px;font-size:15px">Use this code to verify your email:</p>
+<p style="margin:0 0 16px;font-size:30px;font-weight:700;letter-spacing:6px">${code}</p>
+<p style="margin:0 0 16px;font-size:13px;color:#5b6b63">It expires in 10 minutes. If you didn't try to sign up at ${host}, you can ignore this email.</p>
+<p style="margin:0;font-size:12px;color:#8a9a92"><a href="${site}" style="color:#2f6b4f">${host}</a></p>
+</td></tr></table></td></tr></table></body></html>`;
   return { subject, text, html };
 }
 
@@ -74,7 +98,14 @@ async function sendEmail(to: string, code: string, storeName: string) {
   const from = process.env.EMAIL_FROM || `${storeName} <${process.env.SMTP_USER}>`;
   const mail = codeEmail(code, storeName);
   if (smtpConfigured()) {
-    await smtp().sendMail({ from, to, ...mail });
+    await smtp().sendMail({
+      from,
+      to,
+      replyTo: process.env.SMTP_USER,
+      ...mail,
+      // A unique reference so Gmail doesn't fold every code into one thread.
+      headers: { "X-Entity-Ref-ID": randomUUID() },
+    });
     return;
   }
   const res = await fetch("https://api.resend.com/emails", {
