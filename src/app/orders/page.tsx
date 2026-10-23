@@ -39,7 +39,7 @@ export default async function OrdersPage() {
             <h2 className="font-display text-xl font-bold">Log in to see your orders</h2>
             <p className="max-w-sm text-sm text-ink-2">Your orders are kept on your account, on any phone.</p>
             <ButtonLink href="/login?next=/orders" variant="sage">
-              Log in or sign up
+              Log in
             </ButtonLink>
           </div>
         ) : orders.length === 0 ? (

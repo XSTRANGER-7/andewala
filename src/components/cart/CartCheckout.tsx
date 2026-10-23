@@ -84,7 +84,7 @@ function GuestCheckout({ a, trays }: { a: Availability; trays: number }) {
           <span className="num text-lg font-bold">{inr(t * a.price + fee)}</span>
         </div>
         <ButtonLink href="/login?next=/cart" variant="sage" size="lg" className="w-full">
-          Log in or sign up
+          Log in
         </ButtonLink>
       </aside>
     </div>

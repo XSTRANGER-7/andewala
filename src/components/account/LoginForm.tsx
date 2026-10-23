@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { IconCheck } from "@/components/ui/Icons";
 import { Note } from "@/components/ui/Note";
 import { cn } from "@/lib/cn";
 import { completeSignupAction, continueWithEmailAction, logoutCustomerAction, saveProfileAction, setPasswordAction } from "@/server/actions/account";
@@ -231,7 +232,23 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
     if (!verifyOnly) await logoutCustomerAction();
     window.location.replace("/");
   }
-  const showIdentity = !verifyOnly || resume.name.trim().length < 2 || !resume.email;
+  const showName = !verifyOnly || resume.name.trim().length < 2;
+  const showEmail = !resume.email;
+
+  const done = {
+    name: p.name.trim().length >= 2 && (!showEmail || /\S+@\S+\.\S+/.test(p.email)),
+    phone: !!verifiedPhone,
+    password: !pwProblem(pw) && pw === pw2,
+    address: !!pin && where?.status !== "outside" && (where?.status !== "near" || nearOk) && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim()),
+  };
+  const steps = [
+    ...(showName ? [done.name] : []),
+    done.phone,
+    ...(needsPassword ? [done.password] : []),
+    ...(needsAddress ? [done.address] : []),
+  ];
+  const doneCount = steps.filter(Boolean).length;
+  let n = 0;
 
   const ready =
     !!verifiedPhone &&
@@ -241,65 +258,71 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
     (!needsPassword || (pw.length > 0 && pw2.length > 0));
 
   return (
-    <form onSubmit={finish} className="grid gap-4 sm:gap-5" noValidate>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line pb-3">
-        <button type="button" onClick={leave} disabled={leaving} className="-ml-1 inline-flex items-center gap-1 rounded-lg px-1 py-1 text-sm font-semibold text-forest-900 hover:bg-mint-50 disabled:opacity-60" data-leave>
+    <form onSubmit={finish} className="flex min-w-0 flex-col gap-4" noValidate>
+      <div className="flex min-w-0 flex-col gap-3">
+        <button
+          type="button"
+          onClick={leave}
+          disabled={leaving}
+          className="-ml-2 inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-ink-2 transition hover:bg-mint-50 hover:text-ink disabled:opacity-60"
+          data-leave
+        >
           <span aria-hidden="true">←</span> {verifyOnly ? "Back to shop" : leaving ? "Logging out…" : "Back (log out)"}
         </button>
-        {resume.email && (
-          <span className="min-w-0 truncate text-xs text-ink-3">
-            Signed in as <b className="font-semibold text-ink-2">{resume.email}</b>
-          </span>
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold sm:text-3xl">{verifyOnly ? "Verify your mobile to order" : "Finish your account"}</h1>
+          {resume.email && <p className="mt-1 break-all text-sm text-ink-3">{resume.email}</p>}
+        </div>
+        {steps.length > 1 && (
+          <div className="flex items-center gap-3" aria-label={`${doneCount} of ${steps.length} done`}>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-mint-100">
+              <div className="h-full rounded-full bg-forest-700 transition-all duration-500" style={{ width: `${(doneCount / steps.length) * 100}%` }} />
+            </div>
+            <span className="num shrink-0 text-xs font-semibold text-ink-3">
+              {doneCount}/{steps.length}
+            </span>
+          </div>
         )}
       </div>
-      {!verifyOnly && (
-        <ol className="grid grid-cols-3 gap-2 text-[11px] font-semibold text-ink-3 sm:text-xs" aria-label="Steps">
-          {[
-            ["Mobile", !!verifiedPhone],
-            ["Password", !needsPassword || (pw.length > 0 && pw2.length > 0)],
-            ["Address", !needsAddress || (!!pin && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim()))],
-          ].map(([label, done], i) => (
-            <li key={String(label)} className={cn("flex items-center gap-1.5 rounded-lg border px-2 py-1.5", done ? "border-good/30 bg-good-soft text-good" : "border-line")}>
-              <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px]", done ? "bg-good text-paper" : "bg-mint-100 text-ink-2")}>{done ? "✓" : i + 1}</span>
-              <span className="truncate">{label}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-      {showIdentity && (
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Full name" htmlFor="pname" error={errors.name}>
-          <input id="pname" className="input" autoComplete="name" autoFocus value={p.name} onChange={(e) => set("name", e.target.value)} />
-        </Field>
-        <Field label="Email" htmlFor="pemail" error={errors.email} hint={resume.email ? "Your login email." : "For order updates and logging in."}>
-          <input id="pemail" className="input" type="email" autoComplete="email" value={p.email} disabled={!!resume.email} onChange={(e) => set("email", e.target.value)} />
-        </Field>
-      </div>
+
+      {showName && (
+        <Section n={++n} title="Your name" done={done.name}>
+          <input id="pname" className="input text-base sm:text-[15px]" autoComplete="name" placeholder="Full name" aria-label="Full name" value={p.name} onChange={(e) => set("name", e.target.value)} />
+          {errors.name && <p className="text-xs text-bad" role="alert">{errors.name}</p>}
+          {showEmail && (
+            <>
+              <input id="pemail" className="input text-base sm:text-[15px]" type="email" autoComplete="email" placeholder="Email" aria-label="Email" value={p.email} onChange={(e) => set("email", e.target.value)} />
+              {errors.email && <p className="text-xs text-bad" role="alert">{errors.email}</p>}
+            </>
+          )}
+        </Section>
       )}
 
-      <PhoneVerify stay verifiedPhone={verifiedPhone} onVerified={(ph) => { setVerifiedPhone(ph); setErrors((x) => ({ ...x, phone: "" })); }} error={errors.phone} />
+      <Section n={++n} title="Mobile number" done={done.phone} note={verifiedPhone ? undefined : "For the rider"}>
+        <PhoneVerify stay compact verifiedPhone={verifiedPhone} onVerified={(ph) => { setVerifiedPhone(ph); setErrors((x) => ({ ...x, phone: "" })); }} error={errors.phone} />
+      </Section>
 
       {needsPassword && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Create a password" htmlFor="pw-new" error={errors.password} hint="8+ characters with a letter and a number.">
-            <input id="pw-new" className="input" type={showPw ? "text" : "password"} autoComplete="new-password" value={pw} onChange={(e) => { setPw(e.target.value); setErrors((x) => ({ ...x, password: "" })); }} />
-          </Field>
-          <Field label="Confirm password" htmlFor="pw-new2">
-            <input id="pw-new2" className="input" type={showPw ? "text" : "password"} autoComplete="new-password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErrors((x) => ({ ...x, password: "" })); }} />
-          </Field>
-          <label className="flex items-center gap-2 text-xs text-ink-2 sm:col-span-2">
+        <Section n={++n} title="Password" done={done.password} note="8+ characters, letters and a number">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <input id="pw-new" className="input text-base sm:text-[15px]" type={showPw ? "text" : "password"} autoComplete="new-password" placeholder="Password" aria-label="Password" value={pw} onChange={(e) => { setPw(e.target.value); setErrors((x) => ({ ...x, password: "" })); }} />
+            <input id="pw-new2" className="input text-base sm:text-[15px]" type={showPw ? "text" : "password"} autoComplete="new-password" placeholder="Confirm password" aria-label="Confirm password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErrors((x) => ({ ...x, password: "" })); }} />
+          </div>
+          <label className="flex w-fit items-center gap-2 text-xs text-ink-2">
             <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} className="h-4 w-4 accent-forest-900" />
             Show password
           </label>
-        </div>
+          {errors.password && <p className="text-xs text-bad" role="alert">{errors.password}</p>}
+        </Section>
       )}
 
       {needsAddress && (
-        <fieldset className="grid gap-3 border-t border-line pt-4">
-          <legend className="sr-only">Delivery address</legend>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold">Delivery address</p>
-            <div className="flex gap-1.5" role="radiogroup" aria-label="Address label">
+        <Section
+          n={++n}
+          title="Delivery address"
+          done={done.address}
+          action={
+            <div className="flex gap-1" role="radiogroup" aria-label="Address label">
               {["Home", "Work", "Other"].map((l) => (
                 <button
                   key={l}
@@ -307,46 +330,66 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
                   role="radio"
                   aria-checked={p.label === l}
                   onClick={() => set("label", l)}
-                  className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold transition", p.label === l ? "border-forest-900 bg-mint-100 text-forest-900" : "border-line text-ink-2 hover:border-ink-3")}
+                  className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold transition", p.label === l ? "border-forest-900 bg-mint-100 text-forest-900" : "border-line text-ink-2 hover:border-ink-3")}
                 >
                   {l}
                 </button>
               ))}
             </div>
-          </div>
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">Pin your exact location</span>
-            <span className="text-xs text-ink-3">We start at your current location. If the pin isn&apos;t on your door, move the map until it is.</span>
+          }
+        >
+          <p className="text-xs text-ink-3">Move the map until the pin is on your door.</p>
+          <div className="min-w-0">
             <MapPicker value={pin} onChange={onPin} autoLocate={!pin} fallbackPincode={p.pincode.trim() || pincodes[0]} coverage={coverage} error={errors.pin} />
           </div>
           {where?.status === "near" && (
             <label className="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-sm">
-              <input type="checkbox" checked={nearOk} onChange={(e) => { setNearOk(e.target.checked); setErrors((x) => ({ ...x, near: "" })); }} className="mt-0.5 h-4 w-4 accent-forest-900" />
-              <span>
-                <b>Yes, deliver to this spot.</b> It&apos;s {where.distanceM} m outside our area, and we&apos;ll still bring your order here.
+              <input type="checkbox" checked={nearOk} onChange={(e) => { setNearOk(e.target.checked); setErrors((x) => ({ ...x, near: "" })); }} className="mt-0.5 h-4 w-4 shrink-0 accent-forest-900" />
+              <span className="min-w-0">
+                Deliver here anyway ({where.distanceM} m outside our area)
                 {errors.near && <span className="block text-xs text-bad">{errors.near}</span>}
               </span>
             </label>
           )}
-          <Field label="House / flat number, building, street and area" htmlFor="paddress" error={errors.address} hint="Filled in from the pin. Add your house or flat number.">
-            <textarea id="paddress" className="input min-h-20" autoComplete="street-address" value={p.address} onChange={(e) => set("address", e.target.value)} />
+          <Field label="House / flat, street, area" htmlFor="paddress" error={errors.address}>
+            <textarea id="paddress" className="input min-h-20 text-base sm:text-[15px]" rows={2} autoComplete="street-address" value={p.address} onChange={(e) => set("address", e.target.value)} />
           </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,7.5rem)] gap-2.5">
             <Field label="Landmark" htmlFor="plandmark" optional>
-              <input id="plandmark" className="input" value={p.landmark} onChange={(e) => set("landmark", e.target.value)} />
+              <input id="plandmark" className="input text-base sm:text-[15px]" value={p.landmark} onChange={(e) => set("landmark", e.target.value)} />
             </Field>
-            <Field label="PIN code" htmlFor="ppincode" error={errors.pincode} hint={pincodes.length ? `We deliver to ${pincodes.join(", ")}` : undefined}>
-              <input id="ppincode" className="input num" inputMode="numeric" maxLength={6} autoComplete="postal-code" value={p.pincode} onChange={(e) => set("pincode", e.target.value)} />
+            <Field label="PIN code" htmlFor="ppincode" error={errors.pincode}>
+              <input id="ppincode" className="input num text-base sm:text-[15px]" inputMode="numeric" maxLength={6} autoComplete="postal-code" value={p.pincode} onChange={(e) => set("pincode", e.target.value)} />
             </Field>
           </div>
-        </fieldset>
+        </Section>
       )}
 
       {errors.form && <Note tone="bad">{errors.form}</Note>}
-      <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!ready}>
+      <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!ready} className="w-full">
         {!verifiedPhone ? "Verify your mobile to continue" : verifyOnly ? "Continue to order" : "Finish and continue"}
       </Button>
     </form>
+  );
+}
+
+/** One numbered block of the details step; the number turns into a tick when it's done. */
+function Section({ n, title, done, note, action, children }: { n: number; title: string; done: boolean; note?: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="card flex min-w-0 flex-col gap-3">
+      <header className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-2">
+        <span
+          className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold transition", done ? "bg-good text-paper" : "bg-mint-100 text-forest-900")}
+          aria-hidden="true"
+        >
+          {done ? <IconCheck width={13} height={13} /> : n}
+        </span>
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        {note && <span className="text-xs text-ink-3">{note}</span>}
+        {action && <div className="ml-auto">{action}</div>}
+      </header>
+      {children}
+    </section>
   );
 }
 

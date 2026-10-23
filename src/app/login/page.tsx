@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/account/LoginForm";
 import { SiteShell } from "@/components/layout/SiteShell";
-import { cn } from "@/lib/cn";
 import { getProfile, profileComplete } from "@/server/accounts";
 import { getUser } from "@/server/customer-auth";
 import { getSettings } from "@/server/settings";
@@ -38,25 +37,22 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       }
     : undefined;
   const [{ pincodes }, zones] = await Promise.all([getSettings(), getActiveZones()]);
-  const title = !resumeProfile ? "Log in to your account" : verifyToOrder ? "Verify your mobile to order" : "Finish your account";
-  const sub = !resumeProfile
-    ? "With your email and password, or your Google account. New here? The same form creates your account."
-    : verifyToOrder
-      ? "The rider calls this number when they reach you. You only do this once."
-      : "A few details, one time only: your name, a verified mobile number, a password and your delivery address.";
+  const form = <LoginForm key={resumeProfile ? "details" : "auth"} next={dest} coverage={{ zones, pincodes }} resumeProfile={resumeProfile} google={googleEnabled()} googleError={googleError} />;
   return (
     <SiteShell>
-      <div className={cn("container-x grid gap-5 py-6 sm:py-12", resumeProfile && !verifyToOrder ? "max-w-2xl" : "max-w-md")}>
-        <header className="grid gap-1">
-          <p className="eyebrow">Account</p>
-          <h1 className="font-display text-2xl font-bold sm:text-3xl">{title}</h1>
-          <p className="text-sm text-ink-2">{sub}</p>
-        </header>
-        <div className="card">
-          <LoginForm key={resumeProfile ? "details" : "auth"} next={dest} coverage={{ zones, pincodes }} resumeProfile={resumeProfile} google={googleEnabled()} googleError={googleError} />
+      {resumeProfile ? (
+        // "Finish your account" / "Verify your mobile to order" draw their own header and sections.
+        <div className="container-x flex max-w-xl flex-col py-5 sm:py-10">{form}</div>
+      ) : (
+        <div className="container-x flex max-w-md flex-col gap-5 py-6 sm:py-12">
+          <header className="flex flex-col gap-1">
+            <h1 className="font-display text-2xl font-bold sm:text-3xl">Log in to your account</h1>
+            <p className="text-sm text-ink-2">New here? The same form creates your account.</p>
+          </header>
+          <div className="card min-w-0">{form}</div>
+          <p className="text-center text-xs text-ink-3">Your cart stays saved while you log in.</p>
         </div>
-        {!resumeProfile && <p className="text-center text-xs text-ink-3">Your cart stays saved while you log in.</p>}
-      </div>
+      )}
     </SiteShell>
   );
 }

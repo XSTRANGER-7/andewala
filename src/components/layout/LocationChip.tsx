@@ -160,7 +160,7 @@ export function LocationChip({ zone, coverage, addresses }: { zone: string; cove
             <div className="grid gap-2 rounded-lg bg-mint-50 p-3">
               <p className="text-sm text-ink-2">Log in to save your addresses and order in a few taps.</p>
               <ButtonLink href="/login?next=/account" variant="sage" size="sm" className="w-max" prefetch={false}>
-                Log in or sign up
+                Log in
               </ButtonLink>
             </div>
           </div>
