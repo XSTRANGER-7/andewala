@@ -71,9 +71,9 @@ async function clientIp(): Promise<string> {
 export const CODE_COOLDOWN_MS = 120_000;
 /** At most this many codes per number/email (and per account) in an hour. */
 export const CODES_PER_HOUR = 5;
-/** Site-wide email budget (Hostinger mailboxes allow a few hundred a day). */
-const EMAILS_PER_HOUR = Number(process.env.EMAIL_CODES_PER_HOUR ?? 100);
-const EMAILS_PER_DAY = Number(process.env.EMAIL_CODES_PER_DAY ?? 500);
+/** Site-wide email budget, under the mailbox's own cap (Hostinger trial: 100 a day). */
+const EMAILS_PER_HOUR = Number(process.env.EMAIL_CODES_PER_HOUR ?? 30);
+const EMAILS_PER_DAY = Number(process.env.EMAIL_CODES_PER_DAY ?? 90);
 
 type Issued = { ok: true; devCode?: string } | { ok: false; error: string; retryIn?: number };
 

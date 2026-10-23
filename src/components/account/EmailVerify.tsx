@@ -78,7 +78,7 @@ export function EmailVerify({ email, verified, onVerified, stay, error: outerErr
       ) : (
         <>
           <p className="break-all text-sm text-ink-2">
-            Code sent to <b className="font-semibold text-ink">{email}</b>. Check spam too.
+            Code sent to <b className="font-semibold text-ink">{email}</b>. Not in your inbox? Check <b className="font-semibold text-ink">Spam</b> or <b className="font-semibold text-ink">Promotions</b>, and mark it &ldquo;Not spam&rdquo;.
           </p>
           {devCode && (
             <Note tone="info">
