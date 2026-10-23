@@ -127,8 +127,9 @@ model Subscriber {
 model User {
   id              String    @id @default(cuid())
   name            String    @default("")
-  /// 10-digit Indian mobile, unique when set
-  phone           String?   @unique
+  /// 10-digit Indian mobile (required to order, not verified). Unique only once
+  /// verified: partial index "User_phone_verified_key" in migration 0012.
+  phone           String?
   email           String?   @unique
   /// scrypt hash of the customer's password (null until they set one).
   passwordHash    String?
@@ -142,6 +143,8 @@ model User {
   updatedAt       DateTime  @updatedAt
   addresses       Address[]
   sessions        Session[]
+
+  @@index([phone])
 }
 
 model Address {
@@ -242,7 +245,10 @@ model DeliveryZone {
 model Rider {
   id        String   @id @default(cuid())
   name      String
-  phone     String   @unique
+  /// The rider logs in with an account that has this (verified) email.
+  email     String?  @unique
+  /// Contact number shown to customers ("Call the rider"); optional.
+  phone     String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

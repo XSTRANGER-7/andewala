@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/server/db";
-import { endSession, requireUser, sendPhoneCode, signUp, verifyPhoneCode } from "@/server/customer-auth";
+import { endSession, requireUser, sendEmailCode, setPhone, signUp, verifyEmailCode } from "@/server/customer-auth";
 import * as accounts from "@/server/accounts";
 import { addressSchema, fieldErrors, profileSchema, signupSchema, type AddressInput, type SignupInput } from "@/lib/validation";
 import { getActiveZones } from "@/server/zones";
@@ -11,7 +11,7 @@ import { getSettings } from "@/server/settings";
 import { hashPassword, verifyPassword } from "@/server/password";
 import { clientIp, customerLoginBlocked, recordCustomerFailure } from "@/server/guard";
 import { loginWithPassword } from "@/server/customer-auth";
-import { emailSchema, passwordSchema, phoneSchema } from "@/lib/validation";
+import { emailSchema, passwordSchema } from "@/lib/validation";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; errors: Record<string, string> };
 
@@ -25,8 +25,8 @@ export async function logoutCustomerAction(): Promise<void> {
 }
 
 /**
- * Finish sign-up after the first mobile login: name, email and the first
- * delivery address, saved together. The verified mobile is the address's phone.
+ * Finish sign-up: name, mobile number, password (Google sign-ups) and the first
+ * delivery address, saved together. The email must be verified first.
  */
 export async function completeSignupAction(input: SignupInput): Promise<Result> {
   const parsed = signupSchema.safeParse(input);
@@ -34,9 +34,9 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
   try {
     const user = await requireUser();
     const me = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    if (!me.phone || !me.phoneVerifiedAt) return { ok: false, errors: { phone: "Verify your mobile number to continue." } };
+    if (!me.emailVerifiedAt) return { ok: false, errors: { emailCode: "Verify your email to continue." } };
     if (!me.passwordHash && !parsed.data.password) return { ok: false, errors: { password: "Choose a password." } };
-    const { name, email, label, address, landmark, pincode, lat, lng, password } = parsed.data;
+    const { name, email, phone, label, address, landmark, pincode, lat, lng, password } = parsed.data;
     const [settings, zones] = await Promise.all([getSettings(), getActiveZones()]);
     if (isCovered({ zones, pincodes: settings.pincodes }, { lat, lng, pincode }) === false) {
       return { ok: false, errors: zones.length ? { pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." } : { pincode: `We don't deliver to ${pincode} yet.` } };
@@ -44,12 +44,14 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
     if (await prisma.user.findFirst({ where: { email, NOT: { id: user.id } } })) {
       return { ok: false, errors: { email: "This email already has an account. Log in with it instead." } };
     }
+    const ph = await setPhone(user.id, phone);
+    if (!ph.ok) return { ok: false, errors: { phone: ph.error } };
     await prisma.user.update({
       where: { id: user.id },
       data: { name, ...(me.emailVerifiedAt || me.email ? {} : { email }), ...(password && !me.passwordHash ? { passwordHash: await hashPassword(password) } : {}) },
     });
     const hasAddress = (await accounts.listAddresses(user.id)).length > 0;
-    if (!hasAddress) await accounts.saveAddress(user.id, { label, name, phone: me.phone, address, landmark, pincode, lat, lng }, { makeDefault: true });
+    if (!hasAddress) await accounts.saveAddress(user.id, { label, name, phone, address, landmark, pincode, lat, lng }, { makeDefault: true });
     await accounts.markOnboardedIfReady(user.id);
     refresh();
     return { ok: true, data: undefined };
@@ -58,7 +60,7 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
   }
 }
 
-/** Save name and the second contact. The contact used to log in is verified and can't be changed here. */
+/** Save name, mobile number and (until it's verified) email. */
 export async function saveProfileAction(input: { name: string; phone?: string; email?: string }): Promise<Result> {
   const parsed = profileSchema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
@@ -67,7 +69,6 @@ export async function saveProfileAction(input: { name: string; phone?: string; e
     const current = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     const data: { name: string; phone?: string | null; email?: string | null } = { name: parsed.data.name };
 
-    // The mobile number is only ever set by verifying it with a code (sendPhoneCodeAction / verifyPhoneCodeAction).
     if (!current.emailVerifiedAt && parsed.data.email !== undefined) {
       const email = parsed.data.email || null;
       if (email && (await prisma.user.findFirst({ where: { email, NOT: { id: user.id } } }))) {
@@ -75,9 +76,16 @@ export async function saveProfileAction(input: { name: string; phone?: string; e
       }
       data.email = email;
     }
-    if (!current.phone || !current.phoneVerifiedAt) return { ok: false, errors: { phone: "Verify your mobile number to continue." } };
+    const phone = parsed.data.phone || current.phone;
+    if (!phone) return { ok: false, errors: { phone: "Add your mobile number." } };
     if (!(data.email ?? current.email)) return { ok: false, errors: { email: "Add your email address." } };
 
+    if (phone !== current.phone) {
+      const ph = await setPhone(user.id, phone);
+      if (!ph.ok) return { ok: false, errors: { phone: ph.error } };
+    }
+    // A changed email has to be verified again.
+    if (data.email !== undefined && data.email !== current.email) Object.assign(data, { emailVerifiedAt: null });
     await prisma.user.update({ where: { id: user.id }, data });
     await accounts.markOnboardedIfReady(user.id);
     refresh();
@@ -135,7 +143,7 @@ export async function passwordLoginAction(email: string, password: string): Prom
   const res = await loginWithPassword(email, password);
   if (!res.ok) return { ok: false, errors: { password: res.error } };
   refresh();
-  const rider = !!res.user.phone && !!(await prisma.rider.findFirst({ where: { phone: res.user.phone, active: true }, select: { id: true } }));
+  const rider = !!res.user.email && res.user.emailVerified && !!(await prisma.rider.findFirst({ where: { email: res.user.email, active: true }, select: { id: true } }));
   return { ok: true, data: { complete: (await accounts.isOnboarded(res.user.id)) || rider, rider } };
 }
 
@@ -192,32 +200,37 @@ export async function continueWithEmailAction(email: string, password: string, c
   return { ok: true, data: { complete: false, rider: false, created: true } };
 }
 
-/** Send a verification code to a mobile number for the logged-in account. */
-export async function sendPhoneCodeAction(phone: string): Promise<Result<{ devCode?: string; cooldown: number }> & { retryIn?: number }> {
-  const parsed = phoneSchema.safeParse(phone);
-  if (!parsed.success) return { ok: false, errors: { phone: "Enter a 10-digit mobile number." } };
+/** Whether the logged-in account is an active delivery partner (verified email on the Riders list). */
+export async function amIRiderAction(): Promise<boolean> {
+  const user = await requireUser().catch(() => null);
+  if (!user?.email || !user.emailVerified) return false;
+  return !!(await prisma.rider.findFirst({ where: { email: user.email, active: true }, select: { id: true } }));
+}
+
+/** Email a 6-digit code to the logged-in account's email. One per 2 minutes, 5 an hour (plus site-wide caps). */
+export async function sendEmailCodeAction(): Promise<Result<{ email: string; devCode?: string; cooldown: number }> & { retryIn?: number }> {
   try {
     const user = await requireUser();
-    const r = await sendPhoneCode(user.id, parsed.data);
-    if (!r.ok) return { ok: false, errors: { phone: r.error }, retryIn: r.retryIn };
-    return { ok: true, data: { devCode: r.devCode, cooldown: r.cooldown } };
+    const r = await sendEmailCode(user.id);
+    if (!r.ok) return { ok: false, errors: { emailCode: r.error }, retryIn: r.retryIn };
+    return { ok: true, data: { email: r.email, devCode: r.devCode, cooldown: r.cooldown } };
   } catch {
-    return { ok: false, errors: { phone: "Log in again to verify your number." } };
+    return { ok: false, errors: { emailCode: "Log in again to verify your email." } };
   }
 }
 
-/** Check the code and save the verified mobile number on the account. */
-export async function verifyPhoneCodeAction(phone: string, code: string, opts: { stay?: boolean } = {}): Promise<Result> {
-  const parsed = phoneSchema.safeParse(phone);
-  if (!parsed.success || typeof code !== "string") return { ok: false, errors: { code: "Enter the 6-digit code." } };
+/** Check the email code. During sign-up (`stay`) the page doesn't reload. */
+export async function verifyEmailCodeAction(code: string, opts: { stay?: boolean } = {}): Promise<Result> {
+  if (typeof code !== "string") return { ok: false, errors: { emailCode: "Enter the 6-digit code." } };
   try {
     const user = await requireUser();
-    const r = await verifyPhoneCode(user.id, parsed.data, code.slice(0, 10));
-    if (!r.ok) return { ok: false, errors: { code: r.error } };
-    // During sign-up the form stays put (shows "Verified") until the rest is filled in.
+    const r = await verifyEmailCode(user.id, code.slice(0, 10));
+    if (!r.ok) return { ok: false, errors: { emailCode: r.error } };
+    await accounts.markOnboardedIfReady(user.id);
     if (!opts.stay) refresh();
     return { ok: true, data: undefined };
   } catch {
-    return { ok: false, errors: { code: "Log in again to verify your number." } };
+    return { ok: false, errors: { emailCode: "Log in again to verify your email." } };
   }
 }
+

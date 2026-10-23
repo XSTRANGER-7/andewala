@@ -8,15 +8,16 @@ import { IconCheck } from "@/components/ui/Icons";
 import { useToast } from "@/components/ui/Toast";
 import type { Profile } from "@/server/accounts";
 import { saveProfileAction, setPasswordAction } from "@/server/actions/account";
-import { PhoneVerify } from "./PhoneVerify";
+import { EmailVerify } from "./EmailVerify";
 
-/** Name and contacts. A contact used to log in is verified and shown read-only; the other one can be added or changed. */
+/** Name, mobile number (no code needed) and email (verified with a code; read-only once verified). */
 export function ProfileCard({ profile }: { profile: Profile }) {
   const router = useRouter();
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(profile.name);
   const [email, setEmail] = useState(profile.email ?? "");
+  const [phone, setPhone] = useState(profile.phone ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
@@ -26,6 +27,7 @@ export function ProfileCard({ profile }: { profile: Profile }) {
     setErrors({});
     const res = await saveProfileAction({
       name,
+      phone: phone.replace(/\D/g, "").slice(-10),
       ...(profile.emailVerified ? {} : { email }),
     });
     setBusy(false);
@@ -55,7 +57,12 @@ export function ProfileCard({ profile }: { profile: Profile }) {
             {profile.emailVerified && <Verified />}
           </div>
         </dl>
-        {!profile.phoneVerified && <PhoneVerify verifiedPhone={null} onVerified={() => { toast("Mobile number verified"); router.refresh(); }} />}
+        {!profile.emailVerified && profile.email && (
+          <div className="grid gap-2 rounded-xl border border-line p-3">
+            <p className="text-sm font-semibold">Verify your email to order</p>
+            <EmailVerify email={profile.email} verified={false} onVerified={() => { toast("Email verified"); router.refresh(); }} />
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
             Edit profile
@@ -71,8 +78,10 @@ export function ProfileCard({ profile }: { profile: Profile }) {
       <Field label="Name" htmlFor="pf-name" error={errors.name}>
         <input id="pf-name" className="input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <PhoneVerify verifiedPhone={profile.phoneVerified ? profile.phone : null} onVerified={() => { toast("Mobile number verified"); router.refresh(); }} error={errors.phone} />
-      <Field label="Email" htmlFor="pf-email" error={errors.email} hint="You log in with this email.">
+      <Field label="Mobile number" htmlFor="pf-phone" error={errors.phone} hint="The rider calls this number.">
+        <input id="pf-phone" className="input num" type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={11} value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d ]/g, ""))} />
+      </Field>
+      <Field label="Email" htmlFor="pf-email" error={errors.email} hint={profile.emailVerified ? "You log in with this email." : "You'll verify it with a code."}>
         <input id="pf-email" className="input" type="email" disabled={profile.emailVerified} value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
       {errors.form && <p className="text-sm text-bad">{errors.form}</p>}

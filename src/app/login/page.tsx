@@ -32,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         hasAddress: profile.addresses.length > 0,
         hasPassword: profile.hasPassword || verifyToOrder,
         phone: profile.phone,
-        phoneVerified: profile.phoneVerified,
+        emailVerified: profile.emailVerified,
         mode: verifyToOrder ? ("verify" as const) : ("finish" as const),
       }
     : undefined;

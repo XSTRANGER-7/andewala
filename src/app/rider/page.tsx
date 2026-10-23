@@ -39,7 +39,7 @@ export default async function RiderPage() {
       <RiderShell>
         <div className="grid gap-3 py-10 text-center">
           <h1 className="font-display text-2xl font-bold">Not a delivery partner</h1>
-          <p className="text-sm text-ink-2">This mobile number isn&apos;t set up as a delivery partner. Ask the store to add it under Admin › Riders, then log in again.</p>
+          <p className="text-sm text-ink-2">This account&apos;s email isn&apos;t on the delivery partner list. Ask the store to add it under Admin › Riders, then log in again.</p>
           <a href="/api/mode?to=shop" className="font-semibold text-forest-900 hover:underline">
             Back to the shop
           </a>

@@ -96,7 +96,10 @@ export type ZoneFormInput = z.infer<typeof zoneSchema>;
 export const riderSchema = z.object({
   id: z.string().min(1).max(40).optional(),
   name: z.string().trim().min(2, "Enter the rider's name.").max(60),
-  phone: phoneSchema,
+  /** The email of the account they log in with. */
+  email: emailSchema,
+  /** Contact number shown to customers; optional. */
+  phone: z.union([z.literal(""), phoneSchema]).default(""),
   active: z.boolean(),
 });
 export type RiderInput = z.input<typeof riderSchema>;
@@ -156,11 +159,13 @@ export type AddressInput = z.input<typeof addressSchema>;
 export const signupSchema = z.object({
   name: z.string().trim().min(2, "Enter your name.").max(80),
   email: emailSchema,
+  /** The mobile number the rider calls (no code needed). */
+  phone: phoneSchema,
   address: z.string().trim().min(8, "Add your house number, street and area.").max(300),
   landmark: z.string().trim().max(120).default(""),
   pincode: pincodeSchema,
   label: z.string().trim().min(1).max(20).default("Home"),
-  /** Only for accounts that don't have a password yet (older mobile-only accounts). */
+  /** Only for accounts that don't have a password yet (Google sign-ups). */
   password: passwordSchema.optional(),
   /** Map pin for the first address (current location, adjustable). */
   lat: z.number({ error: "Drop the pin on your door: move the map or use your current location." }).finite().min(-90).max(90),

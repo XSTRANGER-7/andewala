@@ -35,7 +35,7 @@ const SUPABASE_MARK = "supabase";
 /** Stored instead of a hash when Twilio Verify owns the code. */
 const TWILIO_MARK = "twilio-verify";
 
-export type CustomerUser = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean };
+export type CustomerUser = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean; emailVerified: boolean };
 
 function secret(): string {
   const s = process.env.AUTH_SECRET;
@@ -71,6 +71,9 @@ async function clientIp(): Promise<string> {
 export const CODE_COOLDOWN_MS = 120_000;
 /** At most this many codes per number/email (and per account) in an hour. */
 export const CODES_PER_HOUR = 5;
+/** Site-wide email budget (Hostinger mailboxes allow a few hundred a day). */
+const EMAILS_PER_HOUR = Number(process.env.EMAIL_CODES_PER_HOUR ?? 100);
+const EMAILS_PER_DAY = Number(process.env.EMAIL_CODES_PER_DAY ?? 500);
 
 type Issued = { ok: true; devCode?: string } | { ok: false; error: string; retryIn?: number };
 
@@ -94,6 +97,15 @@ async function issueCode(channel: Channel, target: string, userId: string | null
     ip ? prisma.otpCode.count({ where: { ip, createdAt: { gte: hourAgo } } }) : Promise.resolve(0),
   ]);
   if (perTarget >= CODES_PER_HOUR || perUser >= CODES_PER_HOUR || perIp >= 20) return { ok: false, error: "Too many codes requested. Try again in an hour." };
+  if (channel === "email") {
+    // The whole site's email budget, so a flood can't get the mailbox blocked.
+    const dayAgo = new Date(now - 86_400_000);
+    const [hour, day] = await Promise.all([
+      prisma.otpCode.count({ where: { channel: "email", createdAt: { gte: hourAgo } } }),
+      prisma.otpCode.count({ where: { channel: "email", createdAt: { gte: dayAgo } } }),
+    ]);
+    if (hour >= EMAILS_PER_HOUR || day >= EMAILS_PER_DAY) return { ok: false, error: "We're sending a lot of emails right now. Try again in a little while." };
+  }
 
   const viaSupabase = supabaseOtpEnabled(channel);
   const viaTwilio = !viaSupabase && channel === "phone" && twilioVerifyEnabled();
@@ -163,30 +175,41 @@ export async function signUp(emailRaw: string, password: string): Promise<{ ok: 
   return { ok: true, user: pick(user) };
 }
 
-/** Send a code to verify a mobile number for the logged-in account. */
-export async function sendPhoneCode(userId: string, phone: string): Promise<{ ok: true; devCode?: string; cooldown: number } | { ok: false; error: string; retryIn?: number }> {
-  const owner = await prisma.user.findUnique({ where: { phone }, select: { id: true, phoneVerifiedAt: true } });
-  if (owner && owner.id !== userId && owner.phoneVerifiedAt) return { ok: false, error: "This mobile number is already registered to another account." };
-  const r = await issueCode("phone", phone, userId);
+/** Send a code to the logged-in account's email (sign-up check). */
+export async function sendEmailCode(userId: string): Promise<{ ok: true; email: string; devCode?: string; cooldown: number } | { ok: false; error: string; retryIn?: number }> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } });
+  if (!me?.email) return { ok: false, error: "Add your email first." };
+  if (me.emailVerifiedAt) return { ok: false, error: "Your email is already verified." };
+  const r = await issueCode("email", me.email, userId);
   if (!r.ok) return r;
-  return { ok: true, devCode: r.devCode, cooldown: CODE_COOLDOWN_MS / 1000 };
+  return { ok: true, email: me.email, devCode: r.devCode, cooldown: CODE_COOLDOWN_MS / 1000 };
 }
 
-/** Check the code and attach the verified mobile number to the logged-in account. */
-export async function verifyPhoneCode(userId: string, phone: string, code: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const last = await prisma.otpCode.findFirst({ where: { target: phone, consumedAt: null }, orderBy: { createdAt: "desc" } });
+/** Check the email code and mark the account's email verified. */
+export async function verifyEmailCode(userId: string, code: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } });
+  if (!me?.email) return { ok: false, error: "Add your email first." };
+  if (me.emailVerifiedAt) return { ok: true };
+  const last = await prisma.otpCode.findFirst({ where: { target: me.email, consumedAt: null }, orderBy: { createdAt: "desc" } });
   if (!last || last.userId !== userId) return { ok: false, error: "Ask for a code first." };
-  const c = await checkCode("phone", phone, code);
+  const c = await checkCode("email", me.email, code);
   if (!c.ok) return c;
-  return prisma.$transaction(async (tx) => {
-    const owner = await tx.user.findUnique({ where: { phone }, select: { id: true, phoneVerifiedAt: true } });
-    if (owner && owner.id !== userId) {
-      if (owner.phoneVerifiedAt) return { ok: false as const, error: "This mobile number is already registered to another account." };
-      await tx.user.update({ where: { id: owner.id }, data: { phone: null } }); // an unverified leftover
-    }
-    await tx.user.update({ where: { id: userId }, data: { phone, phoneVerifiedAt: new Date() } });
-    return { ok: true as const };
-  });
+  await prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });
+  return { ok: true };
+}
+
+/**
+ * Save the mobile number without a code (the rider calls it). A number someone
+ * verified stays theirs; changing the number clears any earlier verification.
+ */
+export async function setPhone(userId: string, phone: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+  if (me?.phone === phone) return { ok: true };
+  if (await prisma.user.findFirst({ where: { phone, phoneVerifiedAt: { not: null }, NOT: { id: userId } }, select: { id: true } })) {
+    return { ok: false, error: "This mobile number belongs to another account." };
+  }
+  await prisma.user.update({ where: { id: userId }, data: { phone, phoneVerifiedAt: null } });
+  return { ok: true };
 }
 
 async function startSession(userId: string) {
@@ -204,8 +227,8 @@ async function startSession(userId: string) {
   });
 }
 
-function pick(u: { id: string; name: string; phone: string | null; email: string | null; phoneVerifiedAt: Date | null }): CustomerUser {
-  return { id: u.id, name: u.name, phone: u.phone, email: u.email, phoneVerified: !!u.phoneVerifiedAt };
+function pick(u: { id: string; name: string; phone: string | null; email: string | null; phoneVerifiedAt: Date | null; emailVerifiedAt: Date | null }): CustomerUser {
+  return { id: u.id, name: u.name, phone: u.phone, email: u.email, phoneVerified: !!u.phoneVerifiedAt, emailVerified: !!u.emailVerifiedAt };
 }
 
 async function sessionId(): Promise<string | null> {
@@ -216,7 +239,6 @@ async function sessionId(): Promise<string | null> {
   return id && sig && safeEqual(sig, sign(id)) ? id : null;
 }
 
-/** The logged-in customer, or null. */
 /** The logged-in customer. Looked up once per request, however many components ask. */
 export const getUser = cache(async (): Promise<CustomerUser | null> => {
   const id = await sessionId();
@@ -275,6 +297,6 @@ export async function signInWithGoogle(g: { sub: string; email: string; name: st
       : await prisma.user.create({ data: { email: g.email, googleSub: g.sub, emailVerifiedAt: new Date(), name: g.name } });
   }
   await startSession(user.id);
-  const rider = !!user.phone && !!(await prisma.rider.findFirst({ where: { phone: user.phone, active: true }, select: { id: true } }));
+  const rider = !!user.email && !!user.emailVerifiedAt && !!(await prisma.rider.findFirst({ where: { email: user.email, active: true }, select: { id: true } }));
   return { ok: true, complete: await isOnboarded(user.id), rider };
 }

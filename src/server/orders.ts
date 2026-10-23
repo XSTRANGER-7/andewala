@@ -324,7 +324,7 @@ export async function resolveIssue(id: string, by: string): Promise<OrderView> {
 }
 
 /** For the customer's own order page: the code to give the rider, and who is bringing it. */
-export async function getDeliveryInfo(id: string): Promise<{ code: string | null; rider: { name: string; phone: string } | null }> {
+export async function getDeliveryInfo(id: string): Promise<{ code: string | null; rider: { name: string; phone: string | null } | null }> {
   const o = await prisma.order.findUnique({ where: { id }, select: { deliveryCode: true, riderId: true } });
   if (!o) return { code: null, rider: null };
   const r = o.riderId ? await prisma.rider.findUnique({ where: { id: o.riderId }, select: { name: true, phone: true } }) : null;

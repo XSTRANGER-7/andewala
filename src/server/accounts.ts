@@ -45,9 +45,9 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   };
 }
 
-/** Ready to order: a name, an email and a verified mobile number (the rider calls it; it can't be skipped). */
-export function profileComplete(p: { name: string; phone: string | null; email: string | null; phoneVerified: boolean }): boolean {
-  return p.name.trim().length >= 2 && !!p.phone && p.phoneVerified && !!p.email;
+/** Ready to order: a name, a mobile number for the rider, and a verified email. */
+export function profileComplete(p: { name: string; phone: string | null; email: string | null; emailVerified: boolean }): boolean {
+  return p.name.trim().length >= 2 && !!p.phone && !!p.email && p.emailVerified;
 }
 
 /** Whether the one-time "Finish your account" step is done. New accounts land on it after every login until then. */

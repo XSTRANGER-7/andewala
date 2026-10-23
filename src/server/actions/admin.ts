@@ -272,7 +272,7 @@ export async function saveRiderAction(input: RiderInput): Promise<AdminResult> {
   try {
     const admin = await requireAdmin();
     const r = await riders.saveRider(parsed.data);
-    await logAudit(admin.name, `${parsed.data.id ? "Updated" : "Added"} rider ${r.name}`, `+91 ${r.phone}${r.active ? "" : " (off)"}`);
+    await logAudit(admin.name, `${parsed.data.id ? "Updated" : "Added"} rider ${r.name}`, `${r.email}${r.phone ? ` · +91 ${r.phone}` : ""}${r.active ? "" : " (off)"}`);
     refreshAll();
     revalidatePath("/admin/riders");
     return { ok: true, message: parsed.data.id ? "Rider saved" : "Rider added" };

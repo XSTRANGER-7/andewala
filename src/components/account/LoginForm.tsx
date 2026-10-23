@@ -7,11 +7,11 @@ import { Field } from "@/components/ui/Field";
 import { IconCheck } from "@/components/ui/Icons";
 import { Note } from "@/components/ui/Note";
 import { cn } from "@/lib/cn";
-import { completeSignupAction, continueWithEmailAction, logoutCustomerAction, saveProfileAction, setPasswordAction } from "@/server/actions/account";
+import { amIRiderAction, completeSignupAction, continueWithEmailAction, logoutCustomerAction, saveProfileAction, setPasswordAction } from "@/server/actions/account";
 import dynamic from "next/dynamic";
 import type { LatLng, PlaceGuess } from "@/lib/geo";
 import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
-import { PhoneVerify } from "./PhoneVerify";
+import { EmailVerify } from "./EmailVerify";
 
 // The map library only runs in the browser.
 const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), {
@@ -19,7 +19,7 @@ const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), 
   loading: () => <div className="grid h-64 place-items-center rounded-xl border border-line bg-mint-100 text-sm text-ink-3">Loading map…</div>,
 });
 
-export type ResumeProfile = { name: string; email: string | null; hasAddress: boolean; hasPassword: boolean; phone: string | null; phoneVerified: boolean; mode: "finish" | "verify" };
+export type ResumeProfile = { name: string; email: string | null; emailVerified: boolean; hasAddress: boolean; hasPassword: boolean; phone: string | null; mode: "finish" | "verify" };
 
 const GOOGLE_ERRORS: Record<string, string> = {
   expired: "Google sign-in took too long or was interrupted. Please try again.",
@@ -153,8 +153,9 @@ export function LoginForm({ next, coverage, resumeProfile, google, googleError }
 }
 
 /**
- * New accounts, once: name, password (if none), verified mobile (compulsory)
- * and the first address. Existing customers only see the mobile check before ordering.
+ * New accounts, once: verified email, name, mobile number (no code), password
+ * (Google sign-ups) and the first address. Existing customers only see what's
+ * still missing before ordering.
  */
 function ProfileStep({ next, coverage, pincodes, resume }: { next: string; coverage: Coverage; pincodes: string[]; resume: ResumeProfile }) {
   const router = useRouter();
@@ -165,7 +166,10 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
   const [p, setP] = useState({ name: resume.name ?? "", email: resume.email ?? "", label: "Home", address: "", landmark: "", pincode: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [verifiedPhone, setVerifiedPhone] = useState<string | null>(resume.phoneVerified ? resume.phone : null);
+  const [emailOk, setEmailOk] = useState(resume.emailVerified);
+  const [phone, setPhone] = useState(resume.phone ?? "");
+  const phoneDigits = phone.replace(/\D/g, "").slice(-10);
+  const phoneOk = /^[6-9]\d{9}$/.test(phoneDigits);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -192,7 +196,8 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
 
   async function finish(e: React.FormEvent) {
     e.preventDefault();
-    if (!verifiedPhone) return setErrors({ phone: "Verify your mobile number to continue." });
+    if (!emailOk) return setErrors({ emailCode: "Verify your email to continue." });
+    if (!phoneOk) return setErrors({ phone: "Enter a 10-digit mobile number." });
     if (needsAddress) {
       if (!pin) return setErrors({ pin: "Drop the pin on your door: move the map, or tap Use my current location." });
       if (where?.status === "outside") return setErrors({ pin: "This pin is outside our delivery area. Move it inside the shaded area on the map." });
@@ -209,8 +214,8 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
     setErrors({});
     const res =
       needsAddress && pin
-        ? await completeSignupAction({ ...p, lat: pin.lat, lng: pin.lng, ...(needsPassword ? { password: pw } : {}) })
-        : await saveProfileAction({ name: p.name, email: p.email });
+        ? await completeSignupAction({ ...p, phone: phoneDigits, lat: pin.lat, lng: pin.lng, ...(needsPassword ? { password: pw } : {}) })
+        : await saveProfileAction({ name: p.name, phone: phoneDigits });
     if (!res.ok) {
       setBusy(false);
       return setErrors(res.errors);
@@ -222,7 +227,8 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
         return setErrors({ password: r2.errors.password ?? r2.errors.form ?? "That password didn't save." });
       }
     }
-    router.replace(next);
+    // Delivery partners choose Rider mode or shopping next.
+    router.replace((await amIRiderAction()) ? "/mode" : next);
     router.refresh();
   }
 
@@ -233,17 +239,20 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
     window.location.replace("/");
   }
   const showName = !verifyOnly || resume.name.trim().length < 2;
-  const showEmail = !resume.email;
+  const showPhone = !verifyOnly || !resume.phone;
+  const showEmailCheck = !resume.emailVerified;
 
   const done = {
-    name: p.name.trim().length >= 2 && (!showEmail || /\S+@\S+\.\S+/.test(p.email)),
-    phone: !!verifiedPhone,
+    email: emailOk,
+    name: p.name.trim().length >= 2,
+    phone: phoneOk,
     password: !pwProblem(pw) && pw === pw2,
     address: !!pin && where?.status !== "outside" && (where?.status !== "near" || nearOk) && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim()),
   };
   const steps = [
+    ...(showEmailCheck ? [done.email] : []),
     ...(showName ? [done.name] : []),
-    done.phone,
+    ...(showPhone ? [done.phone] : []),
     ...(needsPassword ? [done.password] : []),
     ...(needsAddress ? [done.address] : []),
   ];
@@ -251,9 +260,9 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
   let n = 0;
 
   const ready =
-    !!verifiedPhone &&
+    emailOk &&
+    phoneOk &&
     p.name.trim().length >= 2 &&
-    /\S+@\S+\.\S+/.test(p.email) &&
     (!needsAddress || (!!pin && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim()))) &&
     (!needsPassword || (pw.length > 0 && pw2.length > 0));
 
@@ -270,8 +279,8 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
           <span aria-hidden="true">←</span> {verifyOnly ? "Back to shop" : leaving ? "Logging out…" : "Back (log out)"}
         </button>
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold sm:text-3xl">{verifyOnly ? "Verify your mobile to order" : "Finish your account"}</h1>
-          {resume.email && <p className="mt-1 break-all text-sm text-ink-3">{resume.email}</p>}
+          <h1 className="font-display text-2xl font-bold sm:text-3xl">{verifyOnly ? "One more step to order" : "Finish your account"}</h1>
+          {!showEmailCheck && resume.email && <p className="mt-1 break-all text-sm text-ink-3">{resume.email}</p>}
         </div>
         {steps.length > 1 && (
           <div className="flex items-center gap-3" aria-label={`${doneCount} of ${steps.length} done`}>
@@ -285,22 +294,39 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
         )}
       </div>
 
+      {showEmailCheck && resume.email && (
+        <Section n={++n} title="Verify your email" done={done.email}>
+          <EmailVerify stay email={resume.email} verified={emailOk} onVerified={() => { setEmailOk(true); setErrors((x) => ({ ...x, emailCode: "" })); }} error={errors.emailCode} />
+        </Section>
+      )}
+
       {showName && (
         <Section n={++n} title="Your name" done={done.name}>
           <input id="pname" className="input text-base sm:text-[15px]" autoComplete="name" placeholder="Full name" aria-label="Full name" value={p.name} onChange={(e) => set("name", e.target.value)} />
           {errors.name && <p className="text-xs text-bad" role="alert">{errors.name}</p>}
-          {showEmail && (
-            <>
-              <input id="pemail" className="input text-base sm:text-[15px]" type="email" autoComplete="email" placeholder="Email" aria-label="Email" value={p.email} onChange={(e) => set("email", e.target.value)} />
-              {errors.email && <p className="text-xs text-bad" role="alert">{errors.email}</p>}
-            </>
-          )}
         </Section>
       )}
 
-      <Section n={++n} title="Mobile number" done={done.phone} note={verifiedPhone ? undefined : "For the rider"}>
-        <PhoneVerify stay compact verifiedPhone={verifiedPhone} onVerified={(ph) => { setVerifiedPhone(ph); setErrors((x) => ({ ...x, phone: "" })); }} error={errors.phone} />
-      </Section>
+      {showPhone && (
+        <Section n={++n} title="Mobile number" done={done.phone} note="The rider calls this">
+          <div className="flex min-w-0 items-stretch overflow-hidden rounded-lg border border-line bg-paper focus-within:border-forest-700 focus-within:ring-[3px] focus-within:ring-forest-700/20">
+            <span className="num grid place-items-center border-r border-line bg-mint-50 px-3 text-[15px] font-semibold text-ink-2">+91</span>
+            <input
+              id="pphone"
+              className="num min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base tracking-wide outline-none sm:text-[15px]"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel-national"
+              placeholder="98765 43210"
+              maxLength={11}
+              aria-label="Mobile number"
+              value={phone}
+              onChange={(e) => { setPhone(e.target.value.replace(/[^\d ]/g, "")); setErrors((x) => ({ ...x, phone: "" })); }}
+            />
+          </div>
+          {errors.phone && <p className="text-xs text-bad" role="alert">{errors.phone}</p>}
+        </Section>
+      )}
 
       {needsPassword && (
         <Section n={++n} title="Password" done={done.password} note="8+ characters, letters and a number">
@@ -367,7 +393,7 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
 
       {errors.form && <Note tone="bad">{errors.form}</Note>}
       <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!ready} className="w-full">
-        {!verifiedPhone ? "Verify your mobile to continue" : verifyOnly ? "Continue to order" : "Finish and continue"}
+        {!emailOk ? "Verify your email to continue" : verifyOnly ? "Continue to order" : "Finish and continue"}
       </Button>
     </form>
   );

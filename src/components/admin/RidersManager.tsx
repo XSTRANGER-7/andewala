@@ -8,24 +8,25 @@ import { Note } from "@/components/ui/Note";
 import { useToast } from "@/components/ui/Toast";
 import { deleteRiderAction, saveRiderAction } from "@/server/actions/admin";
 
-type Rider = { id: string; name: string; phone: string; active: boolean };
+type Rider = { id: string; name: string; email: string; phone: string; active: boolean };
+const EMPTY = { name: "", email: "", phone: "", active: true };
 
-/** Admin: add delivery partners by mobile number, switch them on/off, remove them. */
-export function RidersManager({ riders, out }: { riders: Rider[]; out: Record<string, number> }) {
+/** Admin: add delivery partners by the email they log in with, switch them on/off, remove them. */
+export function RidersManager({ riders, out, candidates, ready }: { riders: Rider[]; out: Record<string, number>; candidates: { email: string; name: string }[]; ready: string[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
-  const [form, setForm] = useState<{ id?: string; name: string; phone: string; active: boolean }>({ name: "", phone: "", active: true });
+  const [form, setForm] = useState<{ id?: string; name: string; email: string; phone: string; active: boolean }>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState<string | null>(null);
 
   function save(e: React.FormEvent) {
     e.preventDefault();
     start(async () => {
-      const res = await saveRiderAction({ ...form, phone: form.phone.replace(/\D/g, "").slice(-10) });
+      const res = await saveRiderAction({ ...form, email: form.email.trim().toLowerCase(), phone: form.phone.replace(/\D/g, "").slice(-10) });
       if (!res.ok) return setErrors(res.errors);
       setErrors({});
-      setForm({ name: "", phone: "", active: true });
+      setForm(EMPTY);
       toast(res.message);
       router.refresh();
     });
@@ -50,12 +51,35 @@ export function RidersManager({ riders, out }: { riders: Rider[]; out: Record<st
 
   return (
     <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start">
-      <form onSubmit={save} className="card grid gap-3" aria-label={form.id ? "Edit rider" : "Add rider"}>
+      <form onSubmit={save} className="card grid gap-3" aria-label={form.id ? "Edit rider" : "Add rider"} noValidate>
         <h2 className="font-display text-lg font-bold">{form.id ? "Edit rider" : "Add a rider"}</h2>
         <Field label="Name" htmlFor="r-name" error={errors.name}>
           <input id="r-name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ramesh" />
         </Field>
-        <Field label="Mobile number" htmlFor="r-phone" error={errors.phone} hint="They log in with this number to see deliveries.">
+        <Field label="Email" htmlFor="r-email" error={errors.email} hint="The email they log in with (or sign up with). Pick from your customers or type it.">
+          <input
+            id="r-email"
+            className="input"
+            type="email"
+            list="r-email-list"
+            autoComplete="off"
+            value={form.email}
+            onChange={(e) => {
+              const email = e.target.value;
+              const hit = candidates.find((c) => c.email === email.trim().toLowerCase());
+              setForm({ ...form, email, ...(hit && !form.name ? { name: hit.name } : {}) });
+            }}
+            placeholder="rider@example.com"
+          />
+          <datalist id="r-email-list">
+            {candidates.map((c) => (
+              <option key={c.email} value={c.email}>
+                {c.name}
+              </option>
+            ))}
+          </datalist>
+        </Field>
+        <Field label="Mobile number" htmlFor="r-phone" error={errors.phone} optional hint="Shown to customers so they can call the rider.">
           <input id="r-phone" className="input num" inputMode="numeric" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="10-digit number" />
         </Field>
         <label className="flex items-center gap-2 text-sm">
@@ -68,7 +92,7 @@ export function RidersManager({ riders, out }: { riders: Rider[]; out: Record<st
             {form.id ? "Save rider" : "Add rider"}
           </Button>
           {form.id && (
-            <Button type="button" variant="outline" onClick={() => { setForm({ name: "", phone: "", active: true }); setErrors({}); }}>
+            <Button type="button" variant="outline" onClick={() => { setForm(EMPTY); setErrors({}); }}>
               Cancel
             </Button>
           )}
@@ -78,7 +102,7 @@ export function RidersManager({ riders, out }: { riders: Rider[]; out: Record<st
       <section className="card grid gap-2" aria-label="Riders">
         <h2 className="font-display text-lg font-bold">Delivery partners</h2>
         {riders.length === 0 ? (
-          <p className="text-sm text-ink-2">No riders yet. Add one with their mobile number.</p>
+          <p className="text-sm text-ink-2">No riders yet. Add one with their email.</p>
         ) : (
           <ul className="grid gap-2">
             {riders.map((r) => (
@@ -86,9 +110,13 @@ export function RidersManager({ riders, out }: { riders: Rider[]; out: Record<st
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${r.active ? "bg-good" : "bg-line"}`} aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <b>{r.name}</b>
-                  <span className="num block text-xs text-ink-3">
-                    +91 {r.phone}
+                  <span className="block break-all text-xs text-ink-3">
+                    {r.email || "No email yet: edit to add it"}
+                    {r.phone ? ` · +91 ${r.phone}` : ""}
                     {out[r.id] ? ` · ${out[r.id]} out for delivery now` : ""}
+                  </span>
+                  <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${ready.includes(r.email) ? "bg-good-soft text-good" : "bg-warn-soft text-ink-2"}`} data-rider-ready={ready.includes(r.email) ? "yes" : "no"}>
+                    {ready.includes(r.email) ? "Account ready" : "Waiting: they need to sign up with this email"}
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-3 text-xs font-semibold">

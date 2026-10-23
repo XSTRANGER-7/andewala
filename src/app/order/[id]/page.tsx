@@ -82,9 +82,11 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
                 <div className="sm:text-right">
                   <p className="eyebrow">Your delivery partner</p>
                   <p className="font-semibold">{delivery.rider.name}</p>
-                  <a href={`tel:+91${delivery.rider.phone}`} className="text-sm font-semibold text-forest-900 hover:underline">
-                    Call +91 {delivery.rider.phone}
-                  </a>
+                  {delivery.rider.phone && (
+                    <a href={`tel:+91${delivery.rider.phone}`} className="text-sm font-semibold text-forest-900 hover:underline">
+                      Call +91 {delivery.rider.phone}
+                    </a>
+                  )}
                 </div>
               )}
             </div>

@@ -10,18 +10,31 @@ import { toOrderView } from "./orders";
 import { nowIst } from "@/lib/time";
 import type { HistoryEntry, OrderView } from "@/lib/types";
 
-export type RiderView = { id: string; name: string; phone: string; active: boolean };
+export type RiderView = { id: string; name: string; email: string; phone: string; active: boolean };
 
-const toRider = (r: { id: string; name: string; phone: string; active: boolean }): RiderView => ({ id: r.id, name: r.name, phone: r.phone, active: r.active });
+const toRider = (r: { id: string; name: string; email: string | null; phone: string | null; active: boolean }): RiderView => ({ id: r.id, name: r.name, email: r.email ?? "", phone: r.phone ?? "", active: r.active });
 
 export async function listRiders(): Promise<RiderView[]> {
   return (await prisma.rider.findMany({ orderBy: { createdAt: "asc" } })).map(toRider);
 }
 
-export async function saveRider(input: { id?: string; name: string; phone: string; active: boolean }): Promise<RiderView> {
-  const data = { name: input.name.trim(), phone: input.phone, active: input.active };
-  const clash = await prisma.rider.findFirst({ where: { phone: data.phone, ...(input.id ? { NOT: { id: input.id } } : {}) } });
-  if (clash) throw new Error(`${clash.name} already uses this mobile number.`);
+/** For the admin's rider picker: accounts with a verified email (newest first). */
+export async function riderCandidates(): Promise<{ email: string; name: string }[]> {
+  const rows = await prisma.user.findMany({ where: { email: { not: null }, emailVerifiedAt: { not: null } }, select: { email: true, name: true }, orderBy: { createdAt: "desc" }, take: 300 });
+  return rows.map((u) => ({ email: u.email!, name: u.name }));
+}
+
+/** Which rider emails already have an account that can open rider mode (verified email). */
+export async function riderAccounts(emails: string[]): Promise<Set<string>> {
+  if (!emails.length) return new Set();
+  const rows = await prisma.user.findMany({ where: { email: { in: emails }, emailVerifiedAt: { not: null } }, select: { email: true } });
+  return new Set(rows.map((u) => u.email!));
+}
+
+export async function saveRider(input: { id?: string; name: string; email: string; phone: string; active: boolean }): Promise<RiderView> {
+  const data = { name: input.name.trim(), email: input.email.trim().toLowerCase(), phone: input.phone || null, active: input.active };
+  const clash = await prisma.rider.findFirst({ where: { email: data.email, ...(input.id ? { NOT: { id: input.id } } : {}) } });
+  if (clash) throw new Error(`${clash.name} already uses this email.`);
   const row = input.id ? await prisma.rider.update({ where: { id: input.id }, data }) : await prisma.rider.create({ data });
   return toRider(row);
 }
@@ -32,11 +45,12 @@ export async function deleteRider(id: string): Promise<void> {
   await prisma.rider.delete({ where: { id } });
 }
 
-/** The logged-in user's delivery-partner profile, if their mobile number belongs to an active rider. */
+/** The logged-in user's delivery-partner profile, if their verified email belongs to an active rider. */
 export const getRider = cache(async (): Promise<RiderView | null> => {
   const user = await getUser();
-  if (!user?.phone) return null;
-  const r = await prisma.rider.findUnique({ where: { phone: user.phone } });
+  // Only a verified email counts (checked by code at sign-up, or by Google).
+  if (!user?.email || !user.emailVerified) return null;
+  const r = await prisma.rider.findUnique({ where: { email: user.email } });
   return r && r.active ? toRider(r) : null;
 });
 

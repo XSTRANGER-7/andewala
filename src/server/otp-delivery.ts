@@ -1,9 +1,11 @@
 import "server-only";
+import { createTransport, type Transporter } from "nodemailer";
 
 /**
- * Sends one-time login codes.
+ * Sends one-time codes.
  *
- * Email: Resend (free plan: 3,000 emails a month, 100 a day). Set RESEND_API_KEY and EMAIL_FROM.
+ * Email: your own mailbox over SMTP (Hostinger: SMTP_HOST=smtp.hostinger.com, SMTP_PORT=465,
+ *        SMTP_USER=contact@andewala.store, SMTP_PASS, EMAIL_FROM), or Resend (RESEND_API_KEY + EMAIL_FROM).
  * SMS:   MSG91 (India, DLT-registered template) or Twilio. Set the keys for one of them.
  *
  * With no provider configured, development builds return the code so the login
@@ -15,14 +17,14 @@ export type DeliveryResult = { ok: true; devCode?: string } | { ok: false; error
 const isProd = process.env.NODE_ENV === "production";
 
 export function deliveryConfigured(channel: Channel): boolean {
-  if (channel === "email") return !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+  if (channel === "email") return smtpConfigured() || !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
   return !!((process.env.MSG91_AUTH_KEY && process.env.MSG91_TEMPLATE_ID) || (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM));
 }
 
 export async function deliverCode(channel: Channel, target: string, code: string, storeName: string): Promise<DeliveryResult> {
   if (!deliveryConfigured(channel)) {
     if (isProd) {
-      return { ok: false, error: channel === "phone" ? "Login by mobile isn't available yet. Use your email instead." : "Login by email isn't available yet. Use your mobile number instead." };
+      return { ok: false, error: channel === "phone" ? "Mobile codes aren't available yet." : "Email codes aren't available right now. Try again later." };
     }
     console.info(`[dev] ${storeName} login code for ${target}: ${code}`);
     return { ok: true, devCode: code };
@@ -39,17 +41,46 @@ export async function deliverCode(channel: Channel, target: string, code: string
   }
 }
 
+const smtpConfigured = () => !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+
+let transport: Transporter | null = null;
+function smtp(): Transporter {
+  if (!transport) {
+    const port = Number(process.env.SMTP_PORT ?? 465);
+    transport = createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: port === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+    });
+  }
+  return transport;
+}
+
+/** A small code email: plain text plus a few lines of inline-styled HTML (no images, no tracking). */
+function codeEmail(code: string, storeName: string) {
+  const subject = `${code} is your ${storeName} code`;
+  const text = `Your ${storeName} verification code is ${code}
+
+It expires in 10 minutes. If you didn't ask for it, ignore this email.`;
+  const html = `<div style="font-family:Arial,sans-serif;color:#1d2b24;max-width:420px"><p style="margin:0 0 8px">Your ${storeName} verification code</p><p style="margin:0 0 12px;font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p style="margin:0;font-size:13px;color:#5b6b63">Expires in 10 minutes. Didn't ask for it? Ignore this email.</p></div>`;
+  return { subject, text, html };
+}
+
 async function sendEmail(to: string, code: string, storeName: string) {
+  const from = process.env.EMAIL_FROM || `${storeName} <${process.env.SMTP_USER}>`;
+  const mail = codeEmail(code, storeName);
+  if (smtpConfigured()) {
+    await smtp().sendMail({ from, to, ...mail });
+    return;
+  }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM,
-      to,
-      subject: `${code} is your ${storeName} login code`,
-      text: `Your ${storeName} login code is ${code}. It expires in 10 minutes. If you didn't ask for it, ignore this email.`,
-      html: `<p>Your ${storeName} login code is</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>It expires in 10 minutes. If you didn't ask for it, ignore this email.</p>`,
-    }),
+    body: JSON.stringify({ from, to, ...mail }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
 }
@@ -77,6 +108,8 @@ async function sendSms(phone10: string, code: string, storeName: string) {
 
 /** Turn an SMS/email provider error into the fix, for development builds. */
 function explainProviderError(message: string): string {
+  if (/EAUTH|535|Invalid login/i.test(message)) return "The mail server rejected SMTP_USER / SMTP_PASS. Use the mailbox password from Hostinger > Emails.";
+  if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|ESOCKET/i.test(message)) return "Couldn't reach the mail server. Check SMTP_HOST (smtp.hostinger.com) and SMTP_PORT (465).";
   if (/21608|unverified/i.test(message)) return "Your Twilio account is a trial, which can only text verified numbers. Verify this number in Twilio Console > Phone Numbers > Manage > Verified Caller IDs, or upgrade the account.";
   if (/21408|permission to send/i.test(message)) return "Twilio isn't allowed to send SMS to India from this account. Enable India in Twilio Console > Messaging > Settings > Geo permissions.";
   if (/21211|invalid .*'to'/i.test(message)) return "Twilio says this mobile number is invalid.";

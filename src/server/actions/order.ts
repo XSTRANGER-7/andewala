@@ -29,7 +29,7 @@ async function prepare(raw: CheckoutInput): Promise<Prepared> {
   const user = await getUser();
   if (!user) return { ok: false, errors: { auth: "Please log in to place your order." } };
   const profile = await getProfile(user.id);
-  if (!profile || !profileComplete(profile)) return { ok: false, errors: { auth: "Finish your profile (name and mobile number) before ordering." } };
+  if (!profile || !profileComplete(profile)) return { ok: false, errors: { auth: "Add your mobile number and verify your email before ordering." } };
   const address = await getAddress(user.id, parsed.data.addressId);
   if (!address) return { ok: false, errors: { addressId: "Choose a delivery address." } };
   if (address.lat === null || address.lng === null) return { ok: false, errors: { addressId: "Drop a pin on the map for this address so the rider can find you. Tap Edit on the address." } };
