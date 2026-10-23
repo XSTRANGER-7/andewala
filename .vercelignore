@@ -1,0 +1,4 @@
+# Never upload local secrets with `vercel` deploys; production uses the Vercel project settings.
+.env
+.env.*
+!.env.example
