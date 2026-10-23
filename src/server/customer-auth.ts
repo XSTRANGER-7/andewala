@@ -13,11 +13,10 @@ import { hashPassword, verifyPassword } from "./password";
 import { isOnboarded } from "./accounts";
 
 /**
- * Customer login with one-time codes.
+ * Customer accounts: sessions, passwords, Google, and mobile verification codes.
  *
- * - Sign-up is by mobile number only: an unknown mobile creates an account.
- * - Existing accounts can log in with their mobile number or their email.
- *   An email that belongs to no account is refused before any code is sent.
+ * - Accounts log in with email + password, or Google. Codes only verify a
+ *   mobile number for the logged-in account (compulsory before ordering).
  *
  * - Codes are 6 digits, valid 10 minutes, single use, 5 wrong tries max.
  * - Only an HMAC of the code is stored. When Supabase Auth handles a channel
@@ -147,31 +146,6 @@ export type RequestCodeResult =
   | { ok: true; channel: Channel; target: string; devCode?: string; isNew: boolean }
   | { ok: false; error: string; retryIn?: number; code?: "email_not_found" | "not_found" };
 
-/** Mobile OTP login, for existing accounts (new accounts sign up with email + password). */
-export async function requestCode(raw: string): Promise<RequestCodeResult> {
-  const contact = parseContact(raw);
-  if (!contact || contact.channel !== "phone") return { ok: false, error: "Enter your 10-digit mobile number." };
-  const { channel, target } = contact;
-  const existing = await prisma.user.findUnique({ where: { phone: target }, select: { id: true, phoneVerifiedAt: true } });
-  if (!existing?.phoneVerifiedAt) return { ok: false, code: "not_found", error: "No account uses this mobile number. Sign up with your email and a password." };
-  const r = await issueCode(channel, target, null);
-  if (!r.ok) return r;
-  return { ok: true, channel, target, devCode: r.devCode, isNew: false };
-}
-
-export type VerifyResult = { ok: true; user: CustomerUser; isNew: boolean } | { ok: false; error: string };
-
-export async function verifyCode(raw: string, code: string): Promise<VerifyResult> {
-  const contact = parseContact(raw);
-  if (!contact || contact.channel !== "phone") return { ok: false, error: "Enter the 6-digit code." };
-  const existing = await prisma.user.findUnique({ where: { phone: contact.target } });
-  if (!existing?.phoneVerifiedAt) return { ok: false, error: "No account uses this mobile number. Sign up with your email and a password." };
-  const c = await checkCode(contact.channel, contact.target, code);
-  if (!c.ok) return c;
-  await startSession(existing.id);
-  return { ok: true, user: pick(existing), isNew: !existing.name };
-}
-
 /** Sign up with email + password. The mobile number is verified next, in the details step. */
 export async function signUp(emailRaw: string, password: string): Promise<{ ok: true; user: CustomerUser } | { ok: false; error: string; field?: "email" | "password" }> {
   const email = emailRaw.trim().toLowerCase();
@@ -276,12 +250,12 @@ export type PasswordLogin = { ok: true; user: CustomerUser } | { ok: false; erro
 export async function loginWithPassword(emailRaw: string, password: string): Promise<PasswordLogin> {
   const email = emailRaw.trim().toLowerCase();
   const ip = await clientIp();
-  if (await customerLoginBlocked(email, ip)) return { ok: false, error: "Too many wrong tries. Wait 15 minutes, or log in with your mobile number." };
+  if (await customerLoginBlocked(email, ip)) return { ok: false, error: "Too many wrong tries. Wait 15 minutes, or continue with Google." };
   const user = await prisma.user.findUnique({ where: { email } });
   const ok = await verifyPassword(password, user?.passwordHash);
   if (!user || !ok) {
     await recordCustomerFailure(email, ip);
-    return { ok: false, error: user && !user.passwordHash ? "Email or password is wrong. If you never set a password, log in with your mobile number and set one in My profile." : "Email or password is wrong." };
+    return { ok: false, error: "Email or password is wrong." };
   }
   await startSession(user.id);
   return { ok: true, user: pick(user) };

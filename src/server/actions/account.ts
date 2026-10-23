@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/server/db";
-import { endSession, requestCode, requireUser, sendPhoneCode, signUp, verifyCode, verifyPhoneCode } from "@/server/customer-auth";
+import { endSession, requireUser, sendPhoneCode, signUp, verifyPhoneCode } from "@/server/customer-auth";
 import * as accounts from "@/server/accounts";
 import { addressSchema, fieldErrors, profileSchema, signupSchema, type AddressInput, type SignupInput } from "@/lib/validation";
 import { getActiveZones } from "@/server/zones";
@@ -17,20 +17,6 @@ export type Result<T = undefined> = { ok: true; data: T } | { ok: false; errors:
 
 function refresh() {
   for (const p of ["/", "/cart", "/account", "/orders"]) revalidatePath(p);
-}
-
-export async function requestCodeAction(contact: string): Promise<Result<{ channel: "phone" | "email"; target: string; devCode?: string; isNew: boolean }>> {
-  const res = await requestCode(contact);
-  if (!res.ok) return { ok: false, errors: res.code === "email_not_found" ? { contact: res.error, emailNotFound: "1" } : { contact: res.error } };
-  return { ok: true, data: { channel: res.channel, target: res.target, devCode: res.devCode, isNew: res.isNew } };
-}
-
-export async function verifyCodeAction(contact: string, code: string): Promise<Result<{ isNew: boolean; complete: boolean; rider: boolean }>> {
-  const res = await verifyCode(contact, code);
-  if (!res.ok) return { ok: false, errors: { code: res.error } };
-  refresh();
-  const rider = !!res.user.phone && !!(await prisma.rider.findFirst({ where: { phone: res.user.phone, active: true }, select: { id: true } }));
-  return { ok: true, data: { isNew: res.isNew, complete: (await accounts.isOnboarded(res.user.id)) || rider, rider } };
 }
 
 export async function logoutCustomerAction(): Promise<void> {
@@ -64,6 +50,7 @@ export async function completeSignupAction(input: SignupInput): Promise<Result> 
     });
     const hasAddress = (await accounts.listAddresses(user.id)).length > 0;
     if (!hasAddress) await accounts.saveAddress(user.id, { label, name, phone: me.phone, address, landmark, pincode, lat, lng }, { makeDefault: true });
+    await accounts.markOnboardedIfReady(user.id);
     refresh();
     return { ok: true, data: undefined };
   } catch (e) {
@@ -92,6 +79,7 @@ export async function saveProfileAction(input: { name: string; phone?: string; e
     if (!(data.email ?? current.email)) return { ok: false, errors: { email: "Add your email address." } };
 
     await prisma.user.update({ where: { id: user.id }, data });
+    await accounts.markOnboardedIfReady(user.id);
     refresh();
     return { ok: true, data: undefined };
   } catch (e) {
@@ -171,6 +159,7 @@ export async function setPasswordAction(input: { current?: string; password: str
       }
     }
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(parsed.data) } });
+    await accounts.markOnboardedIfReady(user.id);
     // Other devices stay logged in with their own sessions; this one keeps working.
     refresh();
     return { ok: true, data: undefined };
@@ -179,16 +168,28 @@ export async function setPasswordAction(input: { current?: string; password: str
   }
 }
 
-/** Create an account with email + password; the mobile number is verified next. */
-export async function signUpAction(email: string, password: string): Promise<Result> {
-  const e = emailSchema.safeParse(typeof email === "string" ? email.slice(0, 200) : "");
+/**
+ * The one login form. A known email logs in. An unknown email asks to confirm
+ * the password once (`confirm`), then creates the account and goes to "Finish your account".
+ */
+export async function continueWithEmailAction(email: string, password: string, confirm?: string): Promise<Result<{ complete: boolean; rider: boolean; created: boolean }>> {
+  if (typeof email !== "string" || typeof password !== "string" || email.length > 200 || password.length > 200) return { ok: false, errors: { password: "Email or password is wrong." } };
+  const e = emailSchema.safeParse(email.trim().toLowerCase());
   if (!e.success) return { ok: false, errors: { email: "Enter a valid email address." } };
+  const existing = await prisma.user.findUnique({ where: { email: e.data }, select: { passwordHash: true, googleSub: true } });
+  if (existing) {
+    if (!existing.passwordHash && existing.googleSub) return { ok: false, errors: { password: "This account signs in with Google. Use Continue with Google." } };
+    const r = await passwordLoginAction(e.data, password);
+    return r.ok ? { ok: true, data: { ...r.data, created: false } } : r;
+  }
   const pw = passwordSchema.safeParse(password);
-  if (!pw.success) return { ok: false, errors: { password: pw.error.issues[0]?.message ?? "Choose a stronger password." } };
+  if (!pw.success) return { ok: false, errors: { newAccount: "1", password: pw.error.issues[0]?.message ?? "Choose a stronger password." } };
+  if (typeof confirm !== "string") return { ok: false, errors: { newAccount: "1" } };
+  if (confirm !== password) return { ok: false, errors: { newAccount: "1", password2: "The two passwords don't match." } };
   const r = await signUp(e.data, pw.data);
   if (!r.ok) return { ok: false, errors: { [r.field ?? "form"]: r.error } };
   refresh();
-  return { ok: true, data: undefined };
+  return { ok: true, data: { complete: false, rider: false, created: true } };
 }
 
 /** Send a verification code to a mobile number for the logged-in account. */

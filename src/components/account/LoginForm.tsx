@@ -1,20 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Note } from "@/components/ui/Note";
 import { cn } from "@/lib/cn";
-import {
-  completeSignupAction,
-  passwordLoginAction,
-  requestCodeAction,
-  saveProfileAction,
-  setPasswordAction,
-  signUpAction,
-  verifyCodeAction,
-} from "@/server/actions/account";
+import { completeSignupAction, continueWithEmailAction, logoutCustomerAction, saveProfileAction, setPasswordAction } from "@/server/actions/account";
 import dynamic from "next/dynamic";
 import type { LatLng, PlaceGuess } from "@/lib/geo";
 import { coverageAt, usesZones, type Coverage } from "@/lib/zones";
@@ -26,8 +18,7 @@ const MapPicker = dynamic(() => import("./MapPicker").then((m) => m.MapPicker), 
   loading: () => <div className="grid h-64 place-items-center rounded-xl border border-line bg-mint-100 text-sm text-ink-3">Loading map…</div>,
 });
 
-type Step = "auth" | "otp" | "otpcode" | "profile";
-export type ResumeProfile = { name: string; email: string | null; hasAddress: boolean; hasPassword: boolean; phone: string | null; phoneVerified: boolean };
+export type ResumeProfile = { name: string; email: string | null; hasAddress: boolean; hasPassword: boolean; phone: string | null; phoneVerified: boolean; mode: "finish" | "verify" };
 
 const GOOGLE_ERRORS: Record<string, string> = {
   expired: "Google sign-in took too long or was interrupted. Please try again.",
@@ -36,142 +27,54 @@ const GOOGLE_ERRORS: Record<string, string> = {
 };
 
 /**
- * Sign up and log in with email + password (or Google). Then, once: name,
- * a verified mobile number (compulsory) and the first delivery address.
- * Older mobile-only accounts can still log in with a mobile OTP.
+ * One login form: email + password, or Google. An email we don't know yet
+ * creates the account (after confirming the password) and goes to
+ * "Finish your account": name, a verified mobile, password and address.
  */
 export function LoginForm({ next, coverage, resumeProfile, google, googleError }: { next: string; coverage: Coverage; resumeProfile?: ResumeProfile; google: boolean; googleError?: string }) {
   const pincodes = usesZones(coverage) ? [] : coverage.pincodes;
   const router = useRouter();
-  const [step, setStep] = useState<Step>(resumeProfile ? "profile" : "auth");
-  const [tab, setTab] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [isNew, setIsNew] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>(googleError && GOOGLE_ERRORS[googleError] ? { form: GOOGLE_ERRORS[googleError] } : {});
   const [busy, setBusy] = useState(false);
 
-  // mobile OTP login (older accounts)
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [devCode, setDevCode] = useState<string | undefined>();
-  const [cooldown, setCooldown] = useState(0);
-  const codeRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cooldown]);
-
-  /** After logging in: riders choose a mode; finished profiles continue; otherwise the details step (fresh from the server). */
-  function afterLogin(data: { complete: boolean; rider: boolean }) {
-    if (data.rider) {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErrors({});
+    if (isNew) {
+      const problem = pwProblem(password);
+      if (problem) return setErrors({ password: problem });
+      if (password !== password2) return setErrors({ password2: "The two passwords don't match." });
+    }
+    setBusy(true);
+    const r = await continueWithEmailAction(email, password, isNew ? password2 : undefined);
+    if (!r.ok) {
+      setBusy(false);
+      if (r.errors.newAccount) {
+        setIsNew(true);
+        const rest = { ...r.errors };
+        delete rest.newAccount;
+        return setErrors(rest);
+      }
+      return setErrors(r.errors);
+    }
+    if (r.data.rider) {
       router.replace("/mode");
       router.refresh();
-    } else if (data.complete) {
+    } else if (r.data.complete) {
       router.replace(next);
       router.refresh();
     } else {
-      // A full load so the server sends the new account's details step (the session cookie is now set).
+      // A full load so the server sends "Finish your account" (the session cookie is now set).
       window.location.replace(`/login?next=${encodeURIComponent(next)}`);
     }
   }
 
-  async function submitAuth(e: React.FormEvent) {
-    e.preventDefault();
-    setErrors({});
-    if (tab === "signup") {
-      const problem = pwProblem(password) ?? (password !== password2 ? "The two passwords don't match." : null);
-      if (problem) return setErrors({ password: problem });
-      setBusy(true);
-      const r = await signUpAction(email, password);
-      if (!r.ok) {
-        setBusy(false);
-        return setErrors(r.errors);
-      }
-      window.location.replace(`/login?next=${encodeURIComponent(next)}`);
-      return;
-    }
-    setBusy(true);
-    const r = await passwordLoginAction(email, password);
-    if (!r.ok) {
-      setBusy(false);
-      return setErrors({ password: r.errors.password ?? r.errors.email ?? "Email or password is wrong." });
-    }
-    afterLogin(r.data);
-  }
-
-  async function sendOtp(e?: React.FormEvent) {
-    e?.preventDefault();
-    setBusy(true);
-    setErrors({});
-    const r = await requestCodeAction(phone);
-    setBusy(false);
-    if (!r.ok) return setErrors({ phone: r.errors.contact ?? "We couldn't send the code." });
-    setDevCode(r.data.devCode);
-    setCode("");
-    setCooldown(120);
-    setStep("otpcode");
-    setTimeout(() => codeRef.current?.focus(), 50);
-  }
-
-  async function verifyOtp(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setErrors({});
-    const r = await verifyCodeAction(phone, code);
-    if (!r.ok) {
-      setBusy(false);
-      return setErrors({ code: r.errors.code ?? "That code isn't right." });
-    }
-    afterLogin(r.data);
-  }
-
-  if (step === "profile" && resumeProfile) return <ProfileStep next={next} coverage={coverage} pincodes={pincodes} resume={resumeProfile} />;
-
-  if (step === "otp" || step === "otpcode") {
-    return (
-      <div className="grid gap-4">
-        {step === "otp" ? (
-          <form onSubmit={sendOtp} className="grid gap-4" noValidate>
-            <p className="text-sm text-ink-2">For accounts made with a mobile number before passwords. New here? Sign up with email instead.</p>
-            <Field label="Mobile number" htmlFor="otp-phone" error={errors.phone}>
-              <input id="otp-phone" className="input num" type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210" maxLength={11} value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d ]/g, ""))} />
-            </Field>
-            <Button type="submit" variant="sage" size="lg" loading={busy} disabled={phone.replace(/\D/g, "").length !== 10}>
-              Send code
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={verifyOtp} className="grid gap-4" noValidate>
-            <p className="text-sm text-ink-2">Enter the code sent to +91 {phone.replace(/\D/g, "")}.</p>
-            {devCode && (
-              <Note tone="info">
-                Development mode, no SMS provider set up: your code is <b className="num">{devCode}</b>
-              </Note>
-            )}
-            <Field label="6-digit code" htmlFor="otp-code" error={errors.code}>
-              <input id="otp-code" ref={codeRef} className="input num text-center text-2xl tracking-[0.5em]" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
-            </Field>
-            <Button type="submit" variant="sage" size="lg" loading={busy} disabled={code.length !== 6}>
-              Log in
-            </Button>
-            <p className="text-center text-xs text-ink-3">
-              {cooldown > 0 ? `Resend in ${Math.floor(cooldown / 60)}:${String(cooldown % 60).padStart(2, "0")}` : (
-                <button type="button" className="font-semibold text-forest-900 hover:underline" onClick={() => sendOtp()}>
-                  Send a new code
-                </button>
-              )}
-            </p>
-          </form>
-        )}
-        <button type="button" className="text-center text-sm font-semibold text-forest-900 hover:underline" onClick={() => { setStep("auth"); setErrors({}); }}>
-          ← Back to email and password
-        </button>
-      </div>
-    );
-  }
+  if (resumeProfile) return <ProfileStep next={next} coverage={coverage} pincodes={pincodes} resume={resumeProfile} />;
 
   const pwInput = (id: string, value: string, set: (v: string) => void, auto: string) => (
     <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-paper focus-within:border-forest-700 focus-within:ring-[3px] focus-within:ring-forest-700/20">
@@ -184,21 +87,6 @@ export function LoginForm({ next, coverage, resumeProfile, google, googleError }
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 rounded-xl bg-mint-100 p-1" role="tablist" aria-label="Log in or sign up">
-        {(["login", "signup"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => { setTab(t); setErrors({}); }}
-            className={cn("rounded-lg py-2 text-sm font-semibold transition", tab === t ? "bg-paper text-forest-900 shadow" : "text-ink-2 hover:text-ink")}
-          >
-            {t === "login" ? "Log in" : "Sign up"}
-          </button>
-        ))}
-      </div>
-
       {google && (
         <>
           <a
@@ -222,42 +110,57 @@ export function LoginForm({ next, coverage, resumeProfile, google, googleError }
         </>
       )}
 
-      <form onSubmit={submitAuth} className="grid gap-4" noValidate>
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         <Field label="Email" htmlFor="auth-email" error={errors.email}>
-          <input id="auth-email" className="input" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            id="auth-email"
+            className="input"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); if (isNew) { setIsNew(false); setPassword2(""); } }}
+          />
         </Field>
-        <Field label={tab === "signup" ? "Create a password" : "Password"} htmlFor="auth-pw" error={tab === "signup" ? errors.password : undefined} hint={tab === "signup" ? "8+ characters with a letter and a number." : undefined}>
-          {pwInput("auth-pw", password, setPassword, tab === "signup" ? "new-password" : "current-password")}
+        <Field label={isNew ? "Create a password" : "Password"} htmlFor="auth-pw" error={isNew ? errors.password : undefined} hint={isNew ? "8+ characters with a letter and a number." : undefined}>
+          {pwInput("auth-pw", password, setPassword, isNew ? "new-password" : "current-password")}
         </Field>
-        {tab === "signup" && (
-          <Field label="Confirm password" htmlFor="auth-pw2">
-            {pwInput("auth-pw2", password2, setPassword2, "new-password")}
-          </Field>
+        {isNew && (
+          <>
+            <Note tone="info">
+              <b>New here?</b> There&apos;s no account with this email yet. Confirm your password to create one.
+            </Note>
+            <Field label="Confirm password" htmlFor="auth-pw2" error={errors.password2}>
+              {pwInput("auth-pw2", password2, setPassword2, "new-password")}
+            </Field>
+          </>
         )}
-        {tab === "login" && errors.password && (
+        {!isNew && errors.password && (
           <p className="text-sm text-bad" role="alert">
             {errors.password}
           </p>
         )}
         {errors.form && <Note tone="bad">{errors.form}</Note>}
-        <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!/\S+@\S+\.\S+/.test(email) || !password || (tab === "signup" && !password2)}>
-          {tab === "signup" ? "Create account" : "Log in"}
+        <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!/\S+@\S+\.\S+/.test(email) || !password || (isNew && !password2)}>
+          {isNew ? "Create account" : "Log in"}
         </Button>
-        {tab === "signup" && <p className="text-xs text-ink-3">Next, you&apos;ll verify your mobile number and add your delivery address.</p>}
+        {isNew && <p className="text-center text-xs text-ink-3">Next, you&apos;ll add your name, verify your mobile and add your delivery address.</p>}
       </form>
-
-      <button type="button" className="text-center text-sm font-semibold text-forest-900 hover:underline" onClick={() => { setStep("otp"); setErrors({}); }}>
-        {tab === "login" ? "Forgot password, or no password yet? Log in with mobile OTP" : "Already have a mobile-number account? Log in with OTP"}
-      </button>
     </div>
   );
 }
 
-/** Once, after the first login: name, password (if none), verified mobile (compulsory) and the first address. */
+/**
+ * New accounts, once: name, password (if none), verified mobile (compulsory)
+ * and the first address. Existing customers only see the mobile check before ordering.
+ */
 function ProfileStep({ next, coverage, pincodes, resume }: { next: string; coverage: Coverage; pincodes: string[]; resume: ResumeProfile }) {
   const router = useRouter();
+  const verifyOnly = resume.mode === "verify";
   const needsAddress = !resume.hasAddress;
   const needsPassword = !resume.hasPassword;
+  const [leaving, setLeaving] = useState(false);
   const [p, setP] = useState({ name: resume.name ?? "", email: resume.email ?? "", label: "Home", address: "", landmark: "", pincode: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -322,6 +225,14 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
     router.refresh();
   }
 
+  /** New account: going back logs out (nothing half-made stays logged in). Existing customer: back to the shop. */
+  async function leave() {
+    setLeaving(true);
+    if (!verifyOnly) await logoutCustomerAction();
+    window.location.replace("/");
+  }
+  const showIdentity = !verifyOnly || resume.name.trim().length < 2 || !resume.email;
+
   const ready =
     !!verifiedPhone &&
     p.name.trim().length >= 2 &&
@@ -330,11 +241,32 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
     (!needsPassword || (pw.length > 0 && pw2.length > 0));
 
   return (
-    <form onSubmit={finish} className="grid gap-4" noValidate>
-      <div>
-        <h2 className="font-display text-lg font-bold">Your details</h2>
-        <p className="text-sm text-ink-2">One time only. We use these for every delivery.</p>
+    <form onSubmit={finish} className="grid gap-4 sm:gap-5" noValidate>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line pb-3">
+        <button type="button" onClick={leave} disabled={leaving} className="-ml-1 inline-flex items-center gap-1 rounded-lg px-1 py-1 text-sm font-semibold text-forest-900 hover:bg-mint-50 disabled:opacity-60" data-leave>
+          <span aria-hidden="true">←</span> {verifyOnly ? "Back to shop" : leaving ? "Logging out…" : "Back (log out)"}
+        </button>
+        {resume.email && (
+          <span className="min-w-0 truncate text-xs text-ink-3">
+            Signed in as <b className="font-semibold text-ink-2">{resume.email}</b>
+          </span>
+        )}
       </div>
+      {!verifyOnly && (
+        <ol className="grid grid-cols-3 gap-2 text-[11px] font-semibold text-ink-3 sm:text-xs" aria-label="Steps">
+          {[
+            ["Mobile", !!verifiedPhone],
+            ["Password", !needsPassword || (pw.length > 0 && pw2.length > 0)],
+            ["Address", !needsAddress || (!!pin && p.address.trim().length >= 8 && /^\d{6}$/.test(p.pincode.trim()))],
+          ].map(([label, done], i) => (
+            <li key={String(label)} className={cn("flex items-center gap-1.5 rounded-lg border px-2 py-1.5", done ? "border-good/30 bg-good-soft text-good" : "border-line")}>
+              <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px]", done ? "bg-good text-paper" : "bg-mint-100 text-ink-2")}>{done ? "✓" : i + 1}</span>
+              <span className="truncate">{label}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {showIdentity && (
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Full name" htmlFor="pname" error={errors.name}>
           <input id="pname" className="input" autoComplete="name" autoFocus value={p.name} onChange={(e) => set("name", e.target.value)} />
@@ -343,6 +275,7 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
           <input id="pemail" className="input" type="email" autoComplete="email" value={p.email} disabled={!!resume.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
       </div>
+      )}
 
       <PhoneVerify stay verifiedPhone={verifiedPhone} onVerified={(ph) => { setVerifiedPhone(ph); setErrors((x) => ({ ...x, phone: "" })); }} error={errors.phone} />
 
@@ -364,7 +297,7 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
       {needsAddress && (
         <fieldset className="grid gap-3 border-t border-line pt-4">
           <legend className="sr-only">Delivery address</legend>
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold">Delivery address</p>
             <div className="flex gap-1.5" role="radiogroup" aria-label="Address label">
               {["Home", "Work", "Other"].map((l) => (
@@ -411,7 +344,7 @@ function ProfileStep({ next, coverage, pincodes, resume }: { next: string; cover
 
       {errors.form && <Note tone="bad">{errors.form}</Note>}
       <Button type="submit" variant="sage" size="lg" loading={busy} disabled={!ready}>
-        {verifiedPhone ? "Finish and continue" : "Verify your mobile to continue"}
+        {!verifiedPhone ? "Verify your mobile to continue" : verifyOnly ? "Continue to order" : "Finish and continue"}
       </Button>
     </form>
   );

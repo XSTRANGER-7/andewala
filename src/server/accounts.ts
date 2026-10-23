@@ -14,7 +14,7 @@ export type AddressView = {
   lng: number | null;
   isDefault: boolean;
 };
-export type Profile = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean; emailVerified: boolean; hasPassword: boolean; addresses: AddressView[] };
+export type Profile = { id: string; name: string; phone: string | null; email: string | null; phoneVerified: boolean; emailVerified: boolean; hasPassword: boolean; onboarded: boolean; addresses: AddressView[] };
 
 const toView = (a: AddressView): AddressView => ({
   id: a.id,
@@ -40,6 +40,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     phoneVerified: !!u.phoneVerifiedAt,
     emailVerified: !!u.emailVerifiedAt,
     hasPassword: !!u.passwordHash,
+    onboarded: !!u.onboardedAt,
     addresses: u.addresses.map(toView),
   };
 }
@@ -49,17 +50,19 @@ export function profileComplete(p: { name: string; phone: string | null; email: 
   return p.name.trim().length >= 2 && !!p.phone && p.phoneVerified && !!p.email;
 }
 
-/**
- * Sign-up is finished: ready to order, plus a password and a delivery address.
- * Until then every login (email, mobile OTP, Google) lands on the details step.
- */
-export function onboarded(p: Pick<Profile, "name" | "phone" | "email" | "phoneVerified" | "hasPassword" | "addresses">): boolean {
-  return profileComplete(p) && p.hasPassword && p.addresses.length > 0;
+/** Whether the one-time "Finish your account" step is done. New accounts land on it after every login until then. */
+export async function isOnboarded(userId: string): Promise<boolean> {
+  return !!(await prisma.user.findUnique({ where: { id: userId }, select: { onboardedAt: true } }))?.onboardedAt;
 }
 
-export async function isOnboarded(userId: string): Promise<boolean> {
+/** Finish sign-up once it has everything: ready to order, a password and a delivery address. */
+export async function markOnboardedIfReady(userId: string): Promise<boolean> {
   const p = await getProfile(userId);
-  return !!p && onboarded(p);
+  if (!p) return false;
+  if (p.onboarded) return true;
+  if (!(profileComplete(p) && p.hasPassword && p.addresses.length > 0)) return false;
+  await prisma.user.update({ where: { id: userId }, data: { onboardedAt: new Date() } });
+  return true;
 }
 
 export async function listAddresses(userId: string): Promise<AddressView[]> {

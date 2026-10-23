@@ -136,6 +136,8 @@ model User {
   googleSub       String?   @unique
   phoneVerifiedAt DateTime?
   emailVerifiedAt DateTime?
+  /// Set once the one-time "Finish your account" step is done (new accounts land there until then).
+  onboardedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   addresses       Address[]

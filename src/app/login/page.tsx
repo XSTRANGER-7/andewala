@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/account/LoginForm";
 import { SiteShell } from "@/components/layout/SiteShell";
-import { getProfile, onboarded } from "@/server/accounts";
+import { cn } from "@/lib/cn";
+import { getProfile, profileComplete } from "@/server/accounts";
 import { getUser } from "@/server/customer-auth";
 import { getSettings } from "@/server/settings";
 import { getActiveZones } from "@/server/zones";
@@ -20,24 +21,41 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const [{ next, google: googleError }, user] = await Promise.all([searchParams, getUser()]);
   const dest = safeNext(next);
   const profile = user ? await getProfile(user.id) : null;
-  if (profile && onboarded(profile)) redirect(dest);
-  // Logged in but the profile was never finished: pick up at the details step.
+  // Existing customers go straight in. The only thing they can be stopped for is
+  // ordering without a verified mobile number.
+  const verifyToOrder = !!profile?.onboarded && dest.startsWith("/cart") && !profileComplete(profile);
+  if (profile?.onboarded && !verifyToOrder) redirect(dest);
+  // New account: the one-time "Finish your account" step.
   const resumeProfile = profile
-    ? { name: profile.name, email: profile.email, hasAddress: profile.addresses.length > 0, hasPassword: profile.hasPassword, phone: profile.phone, phoneVerified: profile.phoneVerified }
+    ? {
+        name: profile.name,
+        email: profile.email,
+        hasAddress: profile.addresses.length > 0,
+        hasPassword: profile.hasPassword || verifyToOrder,
+        phone: profile.phone,
+        phoneVerified: profile.phoneVerified,
+        mode: verifyToOrder ? ("verify" as const) : ("finish" as const),
+      }
     : undefined;
   const [{ pincodes }, zones] = await Promise.all([getSettings(), getActiveZones()]);
+  const title = !resumeProfile ? "Log in to your account" : verifyToOrder ? "Verify your mobile to order" : "Finish your account";
+  const sub = !resumeProfile
+    ? "With your email and password, or your Google account. New here? The same form creates your account."
+    : verifyToOrder
+      ? "The rider calls this number when they reach you. You only do this once."
+      : "A few details, one time only: your name, a verified mobile number, a password and your delivery address.";
   return (
     <SiteShell>
-      <div className="container-x grid max-w-md gap-5 py-8 sm:py-12">
+      <div className={cn("container-x grid gap-5 py-6 sm:py-12", resumeProfile && !verifyToOrder ? "max-w-2xl" : "max-w-md")}>
         <header className="grid gap-1">
           <p className="eyebrow">Account</p>
-          <h1 className="font-display text-2xl font-bold sm:text-3xl">{resumeProfile ? "Finish your account" : dest === "/cart" ? "Log in to place your order" : "Log in or sign up"}</h1>
-          <p className="text-sm text-ink-2">{resumeProfile ? "Verify your mobile number, then set a password and add your delivery address." : "Use your email and password, or Google."}</p>
+          <h1 className="font-display text-2xl font-bold sm:text-3xl">{title}</h1>
+          <p className="text-sm text-ink-2">{sub}</p>
         </header>
         <div className="card">
           <LoginForm key={resumeProfile ? "details" : "auth"} next={dest} coverage={{ zones, pincodes }} resumeProfile={resumeProfile} google={googleEnabled()} googleError={googleError} />
         </div>
-        <p className="text-center text-xs text-ink-3">Your cart stays saved while you log in.</p>
+        {!resumeProfile && <p className="text-center text-xs text-ink-3">Your cart stays saved while you log in.</p>}
       </div>
     </SiteShell>
   );
